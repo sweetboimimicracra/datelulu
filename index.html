@@ -55,6 +55,8 @@
     display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700;
     color: var(--deep); text-decoration: none;
   }
+  .cal-row { display: flex; gap: 8px; width: 100%; max-width: 340px; }
+  .cal-row .btn { margin-top: 0; font-size: 14px; padding: 12px 8px; }
   .card {
     background: #fff; border-radius: 18px; padding: 16px;
     box-shadow: 0 6px 20px rgba(242,114,160,.18); margin-bottom: 12px;
@@ -273,8 +275,12 @@
   </div>
   <div class="ov-center" id="ovAccepted" style="display:none">
     <div style="font-size:64px" id="ovEmoji"></div>
-    <h1>C'est un date ! 💖</h1>
+    <h1 id="ovTitle">C'est un date ! 💖</h1>
     <div class="detail-card" id="ovDetails"></div>
+    <div class="cal-row">
+      <button class="btn secondary" onclick="addToApple()">📅 Calendrier iPhone</button>
+      <button class="btn secondary" onclick="addToGoogle()">🗓️ Google Agenda</button>
+    </div>
     <button class="btn" style="max-width:240px" onclick="closeOverlay()">C'est noté 💘</button>
   </div>
   <button id="btnNo">Refuser 😢</button>
@@ -428,7 +434,8 @@ function render() {
         const mystery = it.unrefusable && it.status === "pending" && it.from !== store.name;
         const icon = it.status === "accepted" ? "💖" : "💌";
         const t = mystery ? `Date mystère avec ${esc(it.from)}…` : esc(it.title);
-        html += `<div class="item"><span class="emoji-big">${icon}</span><div class="t"><b>${t}</b><span>${fmtTime(new Date(it.date))}</span></div></div>`;
+        const action = mystery ? `openInvite('${it.id}')` : `viewInvite('${it.id}')`;
+        html += `<div class="item" onclick="${action}" style="cursor:pointer"><span class="emoji-big">${icon}</span><div class="t"><b>${t}</b><span>${fmtTime(new Date(it.date))}</span></div></div>`;
       }
     }
     html += `</div>`;
@@ -443,13 +450,15 @@ function render() {
   const sent = invs.filter(i => i.from === store.name);
   $("receivedList").innerHTML = recv.length ? recv.map(i => {
     const mystery = i.unrefusable && i.status === "pending";
-    return `<div class="item" onclick="${i.status === 'pending' ? `openInvite('${i.id}')` : ''}" style="cursor:pointer">
+    const action = i.status === "pending" ? `openInvite('${i.id}')` : `viewInvite('${i.id}')`;
+    return `<div class="item" onclick="${action}" style="cursor:pointer">
       <span class="emoji-big">${mystery ? "🎁" : i.emoji}</span>
       <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}</b>
       <span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`;
   }).join("") : `<div class="muted">Aucune invitation… pour l'instant 👀</div>`;
   $("sentList").innerHTML = sent.length ? sent.map(i =>
-    `<div class="item"><span class="emoji-big">${i.emoji}</span>
+    `<div class="item" onclick="viewInvite('${i.id}')" style="cursor:pointer">
+     <span class="emoji-big">${i.emoji}</span>
      <div class="t"><b>${esc(i.title)}</b><span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`
   ).join("") : `<div class="muted">Tu n'as encore rien envoyé. À toi de jouer 😏</div>`;
 
@@ -523,14 +532,8 @@ $("btnYes").addEventListener("click", async () => {
   $("btnNo").style.display = "none";
   const i = currentInvite;
   $("ovEmoji").textContent = i.emoji;
-  const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
-  const place = i.place
-    ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
-       <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
-    : "";
-  $("ovDetails").innerHTML =
-    d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
-    place + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note);
+  $("ovTitle").textContent = "C'est un date ! 💖";
+  showDetails(i);
   $("ovAccepted").style.display = "flex";
   confetti();
 });
@@ -539,6 +542,93 @@ window.closeOverlay = () => {
   overlayOpen = false; currentInvite = null;
   $("inviteOverlay").classList.remove("show");
   document.querySelectorAll(".confetti").forEach(c => c.remove());
+};
+
+/* ---------- Revoir une invitation (lecture seule) ---------- */
+window.viewInvite = (id) => {
+  const inv = items.find(i => i.id === id);
+  if (!inv) return;
+  currentInvite = inv;
+  overlayOpen = true;
+  $("ovPending").style.display = "none";
+  $("btnNo").style.display = "none";
+  $("ovEmoji").textContent = inv.emoji;
+  $("ovTitle").textContent = inv.status === "accepted"
+    ? "C'est un date ! 💖"
+    : inv.status === "declined" ? "Invitation refusée 💔" : "Invitation envoyée 💌";
+  showDetails(inv);
+  $("ovAccepted").style.display = "flex";
+  $("inviteOverlay").classList.add("show");
+};
+
+function showDetails(i) {
+  const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
+  const place = i.place
+    ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
+       <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
+    : "";
+  $("ovDetails").innerHTML =
+    d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
+    place + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
+    d("💌","DE LA PART DE", i.from);
+}
+
+/* ---------- Export vers les calendriers ---------- */
+function inviteDates(i) {
+  const start = new Date(i.date);
+  const end = new Date(start.getTime() + (i.duration || 120) * 60000);
+  return { start, end };
+}
+const icsStamp = d => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+function calDescription(i) {
+  return [
+    i.note && "💬 " + i.note,
+    i.dress && "👗 Dress code : " + i.dress,
+    "💌 Invitation DateLulu de " + i.from
+  ].filter(Boolean).join("\n");
+}
+
+window.addToApple = () => {
+  const i = currentInvite; if (!i) return;
+  const { start, end } = inviteDates(i);
+  const esc2 = s => (s || "").replace(/([,;\\])/g, "\\$1").replace(/\n/g, "\\n");
+  const ics = [
+    "BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//DateLulu//FR",
+    "BEGIN:VEVENT",
+    "UID:" + i.id + "@datelulu",
+    "DTSTAMP:" + icsStamp(new Date()),
+    "DTSTART:" + icsStamp(start),
+    "DTEND:" + icsStamp(end),
+    "SUMMARY:" + esc2(i.emoji + " " + i.title),
+    "DESCRIPTION:" + esc2(calDescription(i)),
+    i.place ? "LOCATION:" + esc2(i.place) : "",
+    "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY",
+    "DESCRIPTION:" + esc2("Ton date approche 💖"), "END:VALARM",
+    "END:VEVENT", "END:VCALENDAR"
+  ].filter(Boolean).join("\r\n");
+  const blob = new Blob([ics], { type: "text/calendar;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "datelulu.ics";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 3000);
+};
+
+window.addToGoogle = () => {
+  const i = currentInvite; if (!i) return;
+  const { start, end } = inviteDates(i);
+  const params = new URLSearchParams({
+    action: "TEMPLATE",
+    text: i.emoji + " " + i.title,
+    dates: icsStamp(start) + "/" + icsStamp(end),
+    details: calDescription(i),
+    location: i.place || ""
+  });
+  window.open("https://calendar.google.com/calendar/render?" + params, "_blank", "noopener");
 };
 
 function confetti() {
