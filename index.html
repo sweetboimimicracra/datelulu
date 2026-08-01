@@ -71,6 +71,37 @@
     display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700;
     color: #a4652a; background: #fff0d9; padding: 3px 8px; border-radius: 999px;
   }
+  .add-btn {
+    width: 38px; height: 38px; flex: none; border-radius: 50%;
+    border: none; background: var(--pink); color: #fff;
+    font-size: 22px; font-weight: 700; line-height: 1; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(242,114,160,.4);
+  }
+  .step-edit {
+    border: 1.5px solid var(--rose); border-radius: 14px;
+    padding: 12px; margin-top: 12px; background: var(--blush);
+  }
+  .step-edit .head { display: flex; justify-content: space-between; align-items: center; }
+  .step-edit .head b { color: var(--deep); font-size: 14px; }
+  .del-btn {
+    border: none; background: none; color: #c73873; font-size: 18px; cursor: pointer; padding: 0 4px;
+  }
+  .step-item {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 10px 0; border-bottom: 1px solid #ffeef4;
+  }
+  .step-item:last-child { border-bottom: none; }
+  .step-time {
+    font-weight: 800; color: var(--pink); font-size: 13px;
+    min-width: 46px; font-variant-numeric: tabular-nums;
+  }
+  .step-body b { display: block; font-size: 15px; }
+  .step-body small { color: #a9718c; font-size: 12px; }
+  .mini-count { font-size: 13px; font-weight: 800; color: var(--pink); font-variant-numeric: tabular-nums; }
+  .mini-btn {
+    border: none; background: var(--pink); color: #fff; border-radius: 999px;
+    font-size: 12px; font-weight: 700; padding: 6px 12px; margin-top: 6px; cursor: pointer;
+  }
   .type-seg button { font-size: 14px; font-weight: 700; color: var(--deep); padding: 10px 14px; }
   .type-seg button.sel { background: var(--pink); border-color: var(--pink); color: #fff; }
   .secret-card { border: 2px dashed var(--rose); }
@@ -313,6 +344,9 @@
         <label class="switch"><input type="checkbox" id="invHasSecret"><span class="slider"></span></label>
       </div>
       <div id="secretFields" style="display:none">
+        <div class="muted" style="margin-top:8px">
+          🤐 Tant que le secret tient, <b>le lieu et le transport</b> de l'activité principale restent scellés eux aussi.
+        </div>
         <label>L'activité secrète (obligatoire 😈)</label>
         <textarea id="invSecret" placeholder="Saut en parachute… puis restaurant"></textarea>
         <label>Quand la révéler ?</label>
@@ -325,6 +359,16 @@
           <input type="datetime-local" id="invRevealAt">
         </div>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <b>🧩 Sous-activités</b>
+        <button type="button" class="add-btn" onclick="addStep()">＋</button>
+      </div>
+      <div class="muted" style="margin-top:4px">Enchaîne les étapes du programme. Chacune peut avoir son propre secret.</div>
+      <div id="stepsList"></div>
+    </div>
       <button class="btn" id="sendBtn" onclick="sendInvite()">Envoyer l'invitation 💌</button>
       <button class="btn secondary" id="cancelEditBtn" style="display:none" onclick="cancelEdit()">Annuler la modification</button>
     </div>
@@ -542,7 +586,8 @@ window.sendInvite = async () => {
     unrefusable: $("invUnref").checked,
     secret,
     revealAt: scheduled ? $("invRevealAt").value : "",
-    secretRevealed: false
+    secretRevealed: false,
+    steps: collectSteps()
   };
 
   if (editingId) {
@@ -578,6 +623,7 @@ window.sendInvite = async () => {
   $("invSecret").value = $("invPacking").value = "";
   $("invHasSecret").checked = $("invHideTransport").checked = false;
   $("secretFields").style.display = "none";
+  steps = []; renderSteps();
   $("invPlaceMap").style.display = "none";
   show("invites");
 };
@@ -593,6 +639,8 @@ window.editCurrent = () => {
   $("invTransport").value = i.transport || "";
   $("invHideTransport").checked = !!i.hideTransport;
   $("invPacking").value = i.packing || "";
+  steps = (i.steps || []).map(s => ({ ...s }));
+  renderSteps();
   $("invHasSecret").checked = !!i.secret;
   $("invSecret").value = i.secret || "";
   $("invRevealMode").value = i.revealAt ? "scheduled" : "manual";
@@ -795,10 +843,12 @@ window.viewInvite = (id) => {
 
 function showDetails(i) {
   const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
-  const place = i.place
-    ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
-       <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
-    : "";
+  const mine = i.from === store.name;
+  const place = !i.place ? ""
+    : placeVisible(i, mine)
+      ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
+         <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
+      : `<div class="d"><span>🔒</span><div><small>OÙ</small>Sous scellés avec l'activité secrète 🤐</div></div>`;
   const updated = i.updated
     ? `<div class="updated-tag">✏️ Modifié par ${esc(i.updatedBy || i.from)} le ${new Date(i.updated).toLocaleDateString("fr-FR")}${i.changes ? " — " + esc(i.changes) : ""}</div>`
     : "";
@@ -808,13 +858,13 @@ function showDetails(i) {
     d("🗓️", trip ? "DÉPART" : "QUAND", fmtFull(new Date(i.date))) +
     (trip && i.returnDate ? d("🔙","RETOUR", fmtFull(new Date(i.returnDate))) : "") +
     place +
-    (trip ? d("🚉","TRANSPORT", transportVisible(i, i.from === store.name)
+    (trip ? d("🚉","TRANSPORT", transportVisible(i, mine)
         ? i.transport
-        : (i.transport ? "🤫 Surprise — tu le découvriras au départ" : ""))
+        : (i.transport ? "🤫 Surprise — tu le découvriras plus tard" : ""))
       + d("🧳","DANS LA VALISE", i.packing) : "") +
     d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
     d("💌","DE LA PART DE", i.from) + updated;
-  $("ovDetails").insertAdjacentHTML("beforeend", vaultHtml(i));
+  $("ovDetails").insertAdjacentHTML("beforeend", stepsHtml(i) + vaultHtml(i));
 
   // Seul l'auteur peut modifier son invitation.
   $("editInviteBtn").style.display = i.from === store.name ? "block" : "none";
@@ -839,7 +889,10 @@ function calDescription(i) {
     i.type === "trip" && i.packing && "🧳 À prendre : " + i.packing,
     i.secret && (secretUnlocked(i)
       ? "🔓 Activité secrète : " + i.secret
-      : "🔒 Une activité secrète obligatoire t'attend…"),
+      : "🔒 Une activité secrète obligatoire t'attend… (lieu et transport scellés)"),
+    ...(i.steps || []).map(s => stepUnlocked(s)
+      ? `• ${s.time || ""} ${s.title}${s.place ? " — " + s.place : ""}${s.secret ? " 🔓 " + s.secret : ""}`
+      : `• ${s.time || ""} 🔒 étape secrète`),
     (i.type === "trip" ? "✈️ Voyage surprise DateLulu de " : "💌 Invitation DateLulu de ") + i.from
   ].filter(Boolean).join("\n");
 }
@@ -881,7 +934,7 @@ window.addToGoogle = () => {
     text: (i.type === "trip" ? "✈️ " : i.emoji + " ") + i.title,
     dates: icsStamp(start) + "/" + icsStamp(end),
     details: calDescription(i),
-    location: i.place || ""
+    location: placeVisible(i, i.from === store.name) ? (i.place || "") : "🤫 Lieu secret"
   });
   window.open("https://calendar.google.com/calendar/render?" + params, "_blank", "noopener");
 };
@@ -948,6 +1001,112 @@ document.addEventListener("click", e => {
   if (!e.target.closest(".place-wrap")) $("placeSuggest").classList.remove("show");
 });
 
+/* ---------- Sous-activités ---------- */
+let steps = [];
+
+window.addStep = () => {
+  steps.push({ id: "s" + Date.now() + Math.floor(Math.random()*1000),
+    time: "", title: "", place: "", secret: "", revealAt: "", revealed: false });
+  renderSteps();
+};
+
+window.removeStep = (id) => {
+  steps = steps.filter(s => s.id !== id);
+  renderSteps();
+};
+
+function collectSteps() {
+  document.querySelectorAll("#stepsList .step-edit").forEach(el => {
+    const s = steps.find(x => x.id === el.dataset.id); if (!s) return;
+    s.time = el.querySelector(".st-time").value;
+    s.title = el.querySelector(".st-title").value.trim();
+    s.place = el.querySelector(".st-place").value.trim();
+    const on = el.querySelector(".st-has").checked;
+    s.secret = on ? el.querySelector(".st-secret").value.trim() : "";
+    s.revealAt = on && el.querySelector(".st-mode").value === "scheduled"
+      ? el.querySelector(".st-at").value : "";
+  });
+  return steps.filter(s => s.title).sort((a,b) => (a.time || "").localeCompare(b.time || ""));
+}
+
+function renderSteps() {
+  $("stepsList").innerHTML = steps.map((s, n) => `
+    <div class="step-edit" data-id="${s.id}">
+      <div class="head"><b>Étape ${n + 1}</b>
+        <button type="button" class="del-btn" onclick="removeStep('${s.id}')">🗑️</button></div>
+      <label>Heure</label><input type="time" class="st-time" value="${s.time || ""}">
+      <label>Quoi ?</label><input class="st-title" value="${esc(s.title)}" placeholder="Balade en barque">
+      <label>Où ?</label><input class="st-place" value="${esc(s.place)}" placeholder="Parc de la Tête d'Or">
+      <div class="toggle">
+        <div><b>🔒 Secrète obligatoire</b></div>
+        <label class="switch"><input type="checkbox" class="st-has" ${s.secret ? "checked" : ""}><span class="slider"></span></label>
+      </div>
+      <div class="st-fields" style="display:${s.secret ? "block" : "none"}">
+        <label>Le secret de cette étape</label>
+        <textarea class="st-secret">${esc(s.secret)}</textarea>
+        <label>Révélation</label>
+        <select class="st-mode">
+          <option value="manual" ${!s.revealAt ? "selected" : ""}>Quand je le déciderai</option>
+          <option value="scheduled" ${s.revealAt ? "selected" : ""}>À une date précise</option>
+        </select>
+        <div class="st-at-wrap" style="display:${s.revealAt ? "block" : "none"}">
+          <input type="datetime-local" class="st-at" value="${s.revealAt || ""}">
+        </div>
+      </div>
+    </div>`).join("");
+}
+
+$("stepsList").addEventListener("change", e => {
+  const box = e.target.closest(".step-edit"); if (!box) return;
+  if (e.target.classList.contains("st-has"))
+    box.querySelector(".st-fields").style.display = e.target.checked ? "block" : "none";
+  if (e.target.classList.contains("st-mode"))
+    box.querySelector(".st-at-wrap").style.display = e.target.value === "scheduled" ? "block" : "none";
+});
+
+/* Une sous-activité secrète est-elle dévoilée ? */
+function stepUnlocked(s) {
+  if (!s.secret) return true;
+  if (s.revealed) return true;
+  if (s.revealAt && new Date(s.revealAt) <= new Date()) return true;
+  return false;
+}
+
+window.revealStep = async (inviteId, stepId) => {
+  const i = items.find(x => x.id === inviteId); if (!i) return;
+  const list = (i.steps || []).map(s => s.id === stepId ? { ...s, revealed: true } : s);
+  if (!confirm("Révéler cette sous-activité maintenant ? 😏")) return;
+  await updateDoc(doc(db, "couples", store.code, "items", inviteId), { steps: list });
+  if (currentInvite?.id === inviteId) viewInvite(inviteId);
+};
+
+/* Programme affiché dans la fiche */
+function stepsHtml(i) {
+  const list = i.steps || [];
+  if (!list.length) return "";
+  const mine = i.from === store.name;
+  const rows = list.map(s => {
+    // Scellée pour le destinataire tant qu'elle n'est pas révélée.
+    const locked = s.secret && !stepUnlocked(s) && !mine;
+    let body;
+    if (locked) {
+      body = `<b>🔒 Étape secrète obligatoire</b>` + (s.revealAt
+        ? `<span class="mini-count" data-reveal="${s.revealAt}">—</span>`
+        : `<small>${esc(i.from)} la révélera quand bon lui semblera 😈</small>`);
+    } else {
+      const tag = s.secret ? (stepUnlocked(s) ? "🔓 " : "🔒 ") : "";
+      body = `<b>${tag}${esc(s.title)}</b>` +
+        (s.place ? `<small>📍 ${esc(s.place)}</small>` : "") +
+        (s.secret ? `<small>${esc(s.secret)}</small>` : "");
+    }
+    const btn = mine && s.secret && !s.revealed && !s.revealAt
+      ? `<button class="mini-btn" onclick="revealStep('${i.id}','${s.id}')">🔓 Révéler</button>` : "";
+    return `<div class="step-item"><span class="step-time">${s.time || "•"}</span>
+      <div class="step-body">${body}${btn}</div></div>`;
+  }).join("");
+  return `<div class="vault" style="text-align:left"><b style="text-align:center">🧩 Le programme</b>${rows}</div>`;
+}
+
 /* ---------- Type d'invitation (date / voyage) ---------- */
 let invType = "date";
 $("typeSeg").addEventListener("click", e => {
@@ -980,10 +1139,17 @@ $("invRevealMode").addEventListener("change", () => {
 /* Le transport est-il visible pour le destinataire ?
    Il se dévoile à l'heure du départ, ou en même temps que l'activité secrète. */
 function transportVisible(i, forMe) {
-  if (!i.hideTransport) return true;
   if (forMe) return true;                       // l'auteur voit toujours tout
-  if (secretUnlocked(i)) return true;
+  // Une activité secrète non révélée scelle aussi le transport.
+  if (i.secret && !secretUnlocked(i)) return false;
+  if (!i.hideTransport) return true;
   return new Date(i.date) <= new Date();
+}
+
+/* Le lieu suit la même règle : scellé tant que le secret tient. */
+function placeVisible(i, forMe) {
+  if (forMe) return true;
+  return !(i.secret && !secretUnlocked(i));
 }
 
 /* Une activité secrète est-elle visible pour le destinataire ? */
@@ -1024,7 +1190,7 @@ function vaultHtml(i) {
 
 /* Compte à rebours + déclenchement de la révélation programmée */
 setInterval(() => {
-  document.querySelectorAll(".countdown[data-reveal]").forEach(el => {
+  document.querySelectorAll("[data-reveal]").forEach(el => {
     const diff = new Date(el.dataset.reveal) - new Date();
     if (diff <= 0) { el.textContent = "Révélation en cours…"; return; }
     const j = Math.floor(diff / 86400000);
@@ -1041,31 +1207,44 @@ setInterval(() => {
 let urgentShown = new Set(JSON.parse(localStorage.getItem("urgentShown") || "[]"));
 
 function checkReveals() {
+  let dirty = false;
   for (const i of items) {
-    if (!i.secret || !secretUnlocked(i)) continue;
-    if (urgentShown.has(i.id)) continue;
-    urgentShown.add(i.id);
-    localStorage.setItem("urgentShown", JSON.stringify([...urgentShown]));
-    if (i.from !== store.name) fireUrgent(i);
-    else render();
+    // Activité secrète principale
+    if (i.secret && secretUnlocked(i) && !urgentShown.has(i.id)) {
+      urgentShown.add(i.id); dirty = true;
+      if (i.from !== store.name) fireUrgent(i); else render();
+    }
+    // Sous-activités secrètes
+    for (const s of (i.steps || [])) {
+      const key = i.id + "#" + s.id;
+      if (!s.secret || !stepUnlocked(s) || urgentShown.has(key)) continue;
+      urgentShown.add(key); dirty = true;
+      if (i.from !== store.name) fireUrgent(i, s); else render();
+    }
   }
+  if (dirty) localStorage.setItem("urgentShown", JSON.stringify([...urgentShown]));
 }
 
-function fireUrgent(i) {
+function fireUrgent(i, step) {
   const label = i.type === "trip" ? "voyage surprise" : "date";
-  $("urgentTitle").textContent = `🚨 ${i.from} révèle le secret !`;
-  $("urgentBody").innerHTML =
-    `<b>${esc(i.title)}</b><br><br>🔓 ${esc(i.secret)}<br><br>
-     <span style="font-size:14px;opacity:.9">Ton ${label} du ${fmtFull(new Date(i.date))}</span>`;
+  const contenu = step
+    ? `<b>${esc(step.title)}</b>${step.time ? " — " + esc(step.time) : ""}<br><br>🔓 ${esc(step.secret)}` +
+      (step.place ? `<br>📍 ${esc(step.place)}` : "")
+    : `<b>${esc(i.title)}</b><br><br>🔓 ${esc(i.secret)}`;
+  $("urgentTitle").textContent = step
+    ? `🚨 ${i.from} révèle une étape secrète !`
+    : `🚨 ${i.from} révèle le secret !`;
+  $("urgentBody").innerHTML = contenu +
+    `<br><br><span style="font-size:14px;opacity:.9">Ton ${label} du ${fmtFull(new Date(i.date))}</span>`;
   $("urgent").classList.add("show");
   if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 600]);
   if (Notification?.permission === "granted") {
-    new Notification(`🚨 URGENT — ${i.from} a révélé l'activité secrète !`, {
-      body: i.secret,
-      icon: "./icon-192.png",
-      requireInteraction: true,
-      tag: "reveal-" + i.id
-    });
+    new Notification(
+      step ? `🚨 URGENT — ${i.from} révèle une étape secrète !`
+           : `🚨 URGENT — ${i.from} a révélé l'activité secrète !`,
+      { body: step ? step.title + " — " + step.secret : i.secret,
+        icon: "./icon-192.png", requireInteraction: true,
+        tag: "reveal-" + i.id + (step ? "#" + step.id : "") });
   }
 }
 
