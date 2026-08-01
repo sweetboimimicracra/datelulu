@@ -71,6 +71,39 @@
     display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700;
     color: #a4652a; background: #fff0d9; padding: 3px 8px; border-radius: 999px;
   }
+  .type-seg button { font-size: 14px; font-weight: 700; color: var(--deep); padding: 10px 14px; }
+  .type-seg button.sel { background: var(--pink); border-color: var(--pink); color: #fff; }
+  .secret-card { border: 2px dashed var(--rose); }
+  .vault {
+    background: linear-gradient(180deg, #fff, var(--blush));
+    border: 2px dashed var(--pink); border-radius: 16px;
+    padding: 16px; margin-top: 12px; text-align: center;
+  }
+  .vault .lock { font-size: 34px; }
+  .vault b { display: block; color: var(--deep); margin: 6px 0 2px; }
+  .vault .when { font-size: 12px; color: #a9718c; }
+  .vault .content { font-size: 15px; color: var(--text); margin-top: 6px; text-align: left; }
+  .countdown {
+    font-size: 20px; font-weight: 800; color: var(--pink);
+    font-variant-numeric: tabular-nums; margin-top: 4px;
+  }
+  /* Alerte urgente de révélation */
+  #urgent {
+    position: fixed; inset: 0; z-index: 90; display: none;
+    background: var(--pink); color: #fff;
+    flex-direction: column; align-items: center; justify-content: center;
+    gap: 14px; padding: 28px; text-align: center;
+    animation: pulseBg 1.1s ease-in-out infinite alternate;
+  }
+  #urgent.show { display: flex; }
+  @keyframes pulseBg { from { background: #f272a0; } to { background: #c73873; } }
+  #urgent .big { font-size: 64px; animation: shake .6s ease-in-out infinite; }
+  @keyframes shake { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
+  #urgent h1 { font-size: 26px; }
+  #urgent .box {
+    background: rgba(255,255,255,.2); border-radius: 18px; padding: 18px;
+    font-size: 17px; max-width: 340px; width: 100%;
+  }
   .card {
     background: #fff; border-radius: 18px; padding: 16px;
     box-shadow: 0 6px 20px rgba(242,114,160,.18); margin-bottom: 12px;
@@ -225,17 +258,36 @@
   <div id="create" class="screen">
     <div class="edit-banner" id="editBanner">✏️ Tu modifies une invitation existante — ton/ta partenaire sera prévenu·e.</div>
     <div class="card">
-      <label>Titre (ex. Dîner surprise)</label><input id="invTitle">
-      <label>Quand</label><input type="datetime-local" id="invDate">
-      <label>Durée</label>
-      <select id="invDuration">
-        <option value="60">1 h</option><option value="90">1 h 30</option>
-        <option value="120" selected>2 h</option><option value="180">3 h</option>
-        <option value="240">4 h</option>
-      </select>
+      <label>Type</label>
+      <div class="seg type-seg" id="typeSeg">
+        <button type="button" class="sel" data-type="date">💌 Date</button>
+        <button type="button" data-type="trip">✈️ Voyage surprise</button>
+      </div>
+      <label id="lblTitle">Titre (ex. Dîner surprise)</label><input id="invTitle">
+      <label id="lblDate">Quand</label><input type="datetime-local" id="invDate">
+      <div id="tripFields" style="display:none">
+        <label>Retour</label><input type="datetime-local" id="invReturn">
+        <label>Transport</label>
+        <select id="invTransport">
+          <option value="">— au choix —</option>
+          <option value="✈️ Avion">✈️ Avion</option>
+          <option value="🚄 Train">🚄 Train</option>
+          <option value="🚗 Voiture">🚗 Voiture</option>
+          <option value="⛴️ Bateau">⛴️ Bateau</option>
+        </select>
+        <label>À prendre dans la valise</label><input id="invPacking" placeholder="maillot, chaussures de marche…">
+      </div>
+      <div id="durationWrap">
+        <label>Durée</label>
+        <select id="invDuration">
+          <option value="60">1 h</option><option value="90">1 h 30</option>
+          <option value="120" selected>2 h</option><option value="180">3 h</option>
+          <option value="240">4 h</option>
+        </select>
+      </div>
       <label>Ambiance</label>
       <div class="seg" id="emojiSeg"></div>
-      <label>Lieu (révélé après le OUI)</label>
+      <label id="lblPlace">Lieu (révélé après le OUI)</label>
       <div class="place-wrap">
         <input id="invPlace" placeholder="Cherche un restaurant, un parc…" autocomplete="off">
         <div class="suggestions" id="placeSuggest"></div>
@@ -246,6 +298,26 @@
       <div class="toggle">
         <div><b>Irréfusable 😈</b><div class="muted">Le bouton « Refuser » s'enfuit</div></div>
         <label class="switch"><input type="checkbox" id="invUnref" checked><span class="slider"></span></label>
+      </div>
+    </div>
+
+    <div class="card secret-card">
+      <div class="toggle" style="margin-top:0">
+        <div><b>🔒 Activité secrète obligatoire</b><div class="muted">Reste sous scellés même après le OUI</div></div>
+        <label class="switch"><input type="checkbox" id="invHasSecret"><span class="slider"></span></label>
+      </div>
+      <div id="secretFields" style="display:none">
+        <label>L'activité secrète (obligatoire 😈)</label>
+        <textarea id="invSecret" placeholder="Saut en parachute… puis restaurant"></textarea>
+        <label>Quand la révéler ?</label>
+        <select id="invRevealMode">
+          <option value="manual">Quand je le déciderai (bouton « Révéler »)</option>
+          <option value="scheduled">À une date et heure précises</option>
+        </select>
+        <div id="revealAtWrap" style="display:none">
+          <label>Révélation programmée le</label>
+          <input type="datetime-local" id="invRevealAt">
+        </div>
       </div>
       <button class="btn" id="sendBtn" onclick="sendInvite()">Envoyer l'invitation 💌</button>
       <button class="btn secondary" id="cancelEditBtn" style="display:none" onclick="cancelEdit()">Annuler la modification</button>
@@ -319,6 +391,14 @@
     <button class="btn" style="max-width:240px" onclick="closeOverlay()">C'est noté 💘</button>
   </div>
   <button id="btnNo">Refuser 😢</button>
+</div>
+
+<!-- ======== ALERTE URGENTE DE RÉVÉLATION ======== -->
+<div id="urgent">
+  <div class="big">🚨</div>
+  <h1 id="urgentTitle">Le secret est révélé !</h1>
+  <div class="box" id="urgentBody"></div>
+  <button class="btn" style="max-width:260px;background:#fff;color:var(--deep)" onclick="closeUrgent()">Je regarde ça tout de suite 👀</button>
 </div>
 
 <script type="module">
@@ -410,6 +490,7 @@ async function start() {
     items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     render();
     notifyNews();
+    checkReveals();
   });
 }
 
@@ -437,12 +518,24 @@ window.sendInvite = async () => {
   const date = $("invDate").value;
   if (!title || !date) return alert("Il faut au moins un titre et une date 💌");
 
+  const hasSecret = $("invHasSecret").checked;
+  const secret = hasSecret ? $("invSecret").value.trim() : "";
+  const scheduled = hasSecret && $("invRevealMode").value === "scheduled";
+  if (hasSecret && !secret) return alert("Décris l'activité secrète 🔒");
+  if (scheduled && !$("invRevealAt").value) return alert("Choisis la date de révélation ⏰");
+
   const data = {
-    kind: "invite", from: store.name, title, date,
-    duration: +$("invDuration").value,
+    kind: "invite", type: invType, from: store.name, title, date,
+    duration: invType === "trip" ? 0 : +$("invDuration").value,
+    returnDate: invType === "trip" ? $("invReturn").value : "",
+    transport: invType === "trip" ? $("invTransport").value : "",
+    packing: invType === "trip" ? $("invPacking").value.trim() : "",
     place: $("invPlace").value.trim(), dress: $("invDress").value.trim(),
     note: $("invNote").value.trim(), emoji: chosenEmoji,
-    unrefusable: $("invUnref").checked
+    unrefusable: $("invUnref").checked,
+    secret,
+    revealAt: scheduled ? $("invRevealAt").value : "",
+    secretRevealed: false
   };
 
   if (editingId) {
@@ -457,8 +550,11 @@ window.sendInvite = async () => {
       if (old.dress !== data.dress) changes.push("le dress code");
       if (old.note !== data.note) changes.push("le petit mot");
     }
+    if (old?.secret !== data.secret) changes.push("l'activité secrète");
     await put(editingId, {
       ...data,
+      // un secret déjà révélé le reste
+      secretRevealed: old?.secretRevealed || false,
       status: old?.status || "pending",
       created: old?.created || Date.now(),
       updated: Date.now(),
@@ -471,6 +567,9 @@ window.sendInvite = async () => {
   }
 
   $("invTitle").value = $("invPlace").value = $("invDress").value = $("invNote").value = "";
+  $("invSecret").value = $("invPacking").value = "";
+  $("invHasSecret").checked = false;
+  $("secretFields").style.display = "none";
   $("invPlaceMap").style.display = "none";
   show("invites");
 };
@@ -479,6 +578,18 @@ window.sendInvite = async () => {
 window.editCurrent = () => {
   const i = currentInvite; if (!i) return;
   editingId = i.id;
+  invType = i.type === "trip" ? "trip" : "date";
+  document.querySelectorAll("#typeSeg button").forEach(b =>
+    b.classList.toggle("sel", b.dataset.type === invType));
+  $("invReturn").value = i.returnDate || "";
+  $("invTransport").value = i.transport || "";
+  $("invPacking").value = i.packing || "";
+  $("invHasSecret").checked = !!i.secret;
+  $("invSecret").value = i.secret || "";
+  $("invRevealMode").value = i.revealAt ? "scheduled" : "manual";
+  $("invRevealAt").value = i.revealAt || "";
+  $("secretFields").style.display = i.secret ? "block" : "none";
+  $("revealAtWrap").style.display = i.revealAt ? "block" : "none";
   $("invTitle").value = i.title || "";
   $("invDate").value = i.date || "";
   $("invDuration").value = String(i.duration || 120);
@@ -490,6 +601,7 @@ window.editCurrent = () => {
   document.querySelectorAll("#emojiSeg button").forEach(b =>
     b.classList.toggle("sel", b.dataset.e === chosenEmoji));
   updateMapLink();
+  applyType();
   $("editBanner").classList.add("show");
   $("sendBtn").textContent = "Enregistrer les modifications ✏️";
   $("cancelEditBtn").style.display = "block";
@@ -500,8 +612,8 @@ window.editCurrent = () => {
 window.cancelEdit = () => {
   editingId = null;
   $("editBanner").classList.remove("show");
-  $("sendBtn").textContent = "Envoyer l'invitation 💌";
   $("cancelEditBtn").style.display = "none";
+  applyType();
 };
 
 /* ---------- Rendu ---------- */
@@ -527,7 +639,7 @@ function render() {
         html += `<div class="item"><span class="emoji-big">🟢</span><div class="t"><b>${esc(it.from)} dispo</b><span>${fmtTime(new Date(it.start))} – ${fmtTime(new Date(it.end))}</span></div>${del}</div>`;
       } else {
         const mystery = it.unrefusable && it.status === "pending" && it.from !== store.name;
-        const icon = it.status === "accepted" ? "💖" : "💌";
+        const icon = it.type === "trip" ? "✈️" : (it.status === "accepted" ? "💖" : "💌");
         const t = mystery ? `Date mystère avec ${esc(it.from)}…` : esc(it.title);
         const action = mystery ? `openInvite('${it.id}')` : `viewInvite('${it.id}')`;
         html += `<div class="item" onclick="${action}" style="cursor:pointer"><span class="emoji-big">${icon}</span><div class="t"><b>${t}</b><span>${fmtTime(new Date(it.date))}</span></div></div>`;
@@ -547,14 +659,14 @@ function render() {
     const mystery = i.unrefusable && i.status === "pending";
     const action = i.status === "pending" ? `openInvite('${i.id}')` : `viewInvite('${i.id}')`;
     return `<div class="item" onclick="${action}" style="cursor:pointer">
-      <span class="emoji-big">${mystery ? "🎁" : i.emoji}</span>
-      <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}</b>
+      <span class="emoji-big">${mystery ? "🎁" : (i.type === "trip" ? "✈️" : i.emoji)}</span>
+      <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}${i.secret ? (secretUnlocked(i) ? " 🎉" : " 🔒") : ""}</b>
       <span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`;
   }).join("") : `<div class="muted">Aucune invitation… pour l'instant 👀</div>`;
   $("sentList").innerHTML = sent.length ? sent.map(i =>
     `<div class="item" onclick="viewInvite('${i.id}')" style="cursor:pointer">
-     <span class="emoji-big">${i.emoji}</span>
-     <div class="t"><b>${esc(i.title)}</b><span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`
+     <span class="emoji-big">${i.type === "trip" ? "✈️" : i.emoji}</span>
+     <div class="t"><b>${esc(i.title)}${i.secret ? (secretUnlocked(i) ? " 🎉" : " 🔒") : ""}</b><span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`
   ).join("") : `<div class="muted">Tu n'as encore rien envoyé. À toi de jouer 😏</div>`;
 
   // Ouverture auto d'une invitation en attente
@@ -581,6 +693,9 @@ function notifyNews() {
       } else if (isUpdate) {
         title = `✏️ ${it.from} a modifié votre date`;
         body = it.changes ? "Changement : " + it.changes : it.title;
+      } else if (it.type === "trip") {
+        title = `✈️ ${it.from} t'emmène en voyage surprise !`;
+        body = it.unrefusable ? "Destination mystère… et non, tu ne peux pas refuser 😏" : it.title;
       } else {
         title = `💌 ${it.from} t'invite à un date !`;
         body = it.unrefusable ? "Invitation mystère… bonne chance pour refuser 😏" : it.title;
@@ -678,10 +793,16 @@ function showDetails(i) {
   const updated = i.updated
     ? `<div class="updated-tag">✏️ Modifié par ${esc(i.updatedBy || i.from)} le ${new Date(i.updated).toLocaleDateString("fr-FR")}${i.changes ? " — " + esc(i.changes) : ""}</div>`
     : "";
+  const trip = i.type === "trip";
   $("ovDetails").innerHTML =
-    d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
-    place + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
+    d("✨", trip ? "VOYAGE" : "PROGRAMME", i.title) +
+    d("🗓️", trip ? "DÉPART" : "QUAND", fmtFull(new Date(i.date))) +
+    (trip && i.returnDate ? d("🔙","RETOUR", fmtFull(new Date(i.returnDate))) : "") +
+    place +
+    (trip ? d("🚉","TRANSPORT", i.transport) + d("🧳","DANS LA VALISE", i.packing) : "") +
+    d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
     d("💌","DE LA PART DE", i.from) + updated;
+  $("ovDetails").insertAdjacentHTML("beforeend", vaultHtml(i));
 
   // Seul l'auteur peut modifier son invitation.
   $("editInviteBtn").style.display = i.from === store.name ? "block" : "none";
@@ -690,7 +811,9 @@ function showDetails(i) {
 /* ---------- Export vers les calendriers ---------- */
 function inviteDates(i) {
   const start = new Date(i.date);
-  const end = new Date(start.getTime() + (i.duration || 120) * 60000);
+  const end = i.type === "trip" && i.returnDate
+    ? new Date(i.returnDate)
+    : new Date(start.getTime() + (i.duration || 120) * 60000);
   return { start, end };
 }
 const icsStamp = d => d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
@@ -699,7 +822,12 @@ function calDescription(i) {
   return [
     i.note && "💬 " + i.note,
     i.dress && "👗 Dress code : " + i.dress,
-    "💌 Invitation DateLulu de " + i.from
+    i.type === "trip" && i.transport && "🚉 " + i.transport,
+    i.type === "trip" && i.packing && "🧳 À prendre : " + i.packing,
+    i.secret && (secretUnlocked(i)
+      ? "🔓 Activité secrète : " + i.secret
+      : "🔒 Une activité secrète obligatoire t'attend…"),
+    (i.type === "trip" ? "✈️ Voyage surprise DateLulu de " : "💌 Invitation DateLulu de ") + i.from
   ].filter(Boolean).join("\n");
 }
 
@@ -714,7 +842,7 @@ window.addToApple = () => {
     "DTSTAMP:" + icsStamp(new Date()),
     "DTSTART:" + icsStamp(start),
     "DTEND:" + icsStamp(end),
-    "SUMMARY:" + esc2(i.emoji + " " + i.title),
+    "SUMMARY:" + esc2((i.type === "trip" ? "✈️ " : i.emoji + " ") + i.title),
     "DESCRIPTION:" + esc2(calDescription(i)),
     i.place ? "LOCATION:" + esc2(i.place) : "",
     "BEGIN:VALARM", "TRIGGER:-PT2H", "ACTION:DISPLAY",
@@ -737,7 +865,7 @@ window.addToGoogle = () => {
   const { start, end } = inviteDates(i);
   const params = new URLSearchParams({
     action: "TEMPLATE",
-    text: i.emoji + " " + i.title,
+    text: (i.type === "trip" ? "✈️ " : i.emoji + " ") + i.title,
     dates: icsStamp(start) + "/" + icsStamp(end),
     details: calDescription(i),
     location: i.place || ""
@@ -806,6 +934,123 @@ $("placeSuggest").addEventListener("click", e => {
 document.addEventListener("click", e => {
   if (!e.target.closest(".place-wrap")) $("placeSuggest").classList.remove("show");
 });
+
+/* ---------- Type d'invitation (date / voyage) ---------- */
+let invType = "date";
+$("typeSeg").addEventListener("click", e => {
+  const b = e.target.closest("button[data-type]"); if (!b) return;
+  invType = b.dataset.type;
+  document.querySelectorAll("#typeSeg button").forEach(x => x.classList.toggle("sel", x === b));
+  applyType();
+});
+
+function applyType() {
+  const trip = invType === "trip";
+  $("tripFields").style.display = trip ? "block" : "none";
+  $("durationWrap").style.display = trip ? "none" : "block";
+  $("lblTitle").textContent = trip ? "Nom du voyage (ex. Escapade surprise)" : "Titre (ex. Dîner surprise)";
+  $("lblDate").textContent = trip ? "Départ" : "Quand";
+  $("lblPlace").textContent = trip ? "Destination (révélée après le OUI)" : "Lieu (révélé après le OUI)";
+  $("sendBtn").textContent = editingId
+    ? "Enregistrer les modifications ✏️"
+    : trip ? "Envoyer le voyage surprise ✈️" : "Envoyer l'invitation 💌";
+}
+
+/* ---------- Activité secrète ---------- */
+$("invHasSecret").addEventListener("change", () => {
+  $("secretFields").style.display = $("invHasSecret").checked ? "block" : "none";
+});
+$("invRevealMode").addEventListener("change", () => {
+  $("revealAtWrap").style.display = $("invRevealMode").value === "scheduled" ? "block" : "none";
+});
+
+/* Une activité secrète est-elle visible pour le destinataire ? */
+function secretUnlocked(i) {
+  if (!i.secret) return false;
+  if (i.secretRevealed) return true;
+  if (i.revealAt && new Date(i.revealAt) <= new Date()) return true;
+  return false;
+}
+
+window.revealSecret = async (id) => {
+  const i = items.find(x => x.id === id); if (!i) return;
+  if (!confirm("Révéler l'activité secrète maintenant ? Pas de retour en arrière 😏")) return;
+  await updateDoc(doc(db, "couples", store.code, "items", id),
+    { secretRevealed: true, secretRevealedAt: Date.now() });
+  if (currentInvite?.id === id) viewInvite(id);
+};
+
+/* Rendu du coffre (verrouillé ou ouvert) */
+function vaultHtml(i) {
+  if (!i.secret) return "";
+  const mine = i.from === store.name;
+  if (secretUnlocked(i)) {
+    return `<div class="vault"><div class="lock">🎉</div><b>Activité secrète — révélée !</b>
+      <div class="content">${esc(i.secret)}</div></div>`;
+  }
+  const when = i.revealAt
+    ? `Révélation programmée : ${fmtFull(new Date(i.revealAt))}`
+    : `${esc(i.from)} la révélera quand bon lui semblera 😈`;
+  const timer = i.revealAt ? `<div class="countdown" data-reveal="${i.revealAt}">—</div>` : "";
+  const btn = mine
+    ? `<button class="btn" style="margin-top:10px" onclick="revealSecret('${i.id}')">🔓 Révéler maintenant</button>`
+    : "";
+  return `<div class="vault"><div class="lock">🔒</div>
+    <b>Activité secrète obligatoire</b>
+    <div class="when">${when}</div>${timer}${btn}</div>`;
+}
+
+/* Compte à rebours + déclenchement de la révélation programmée */
+setInterval(() => {
+  document.querySelectorAll(".countdown[data-reveal]").forEach(el => {
+    const diff = new Date(el.dataset.reveal) - new Date();
+    if (diff <= 0) { el.textContent = "Révélation en cours…"; return; }
+    const j = Math.floor(diff / 86400000);
+    const h = Math.floor(diff / 3600000) % 24;
+    const m = Math.floor(diff / 60000) % 60;
+    const s = Math.floor(diff / 1000) % 60;
+    el.textContent = (j ? j + "j " : "") + String(h).padStart(2,"0") + ":" +
+      String(m).padStart(2,"0") + ":" + String(s).padStart(2,"0");
+  });
+  checkReveals();
+}, 1000);
+
+/* ---------- Alerte urgente ---------- */
+let urgentShown = new Set(JSON.parse(localStorage.getItem("urgentShown") || "[]"));
+
+function checkReveals() {
+  for (const i of items) {
+    if (!i.secret || !secretUnlocked(i)) continue;
+    if (urgentShown.has(i.id)) continue;
+    urgentShown.add(i.id);
+    localStorage.setItem("urgentShown", JSON.stringify([...urgentShown]));
+    if (i.from !== store.name) fireUrgent(i);
+    else render();
+  }
+}
+
+function fireUrgent(i) {
+  const label = i.type === "trip" ? "voyage surprise" : "date";
+  $("urgentTitle").textContent = `🚨 ${i.from} révèle le secret !`;
+  $("urgentBody").innerHTML =
+    `<b>${esc(i.title)}</b><br><br>🔓 ${esc(i.secret)}<br><br>
+     <span style="font-size:14px;opacity:.9">Ton ${label} du ${fmtFull(new Date(i.date))}</span>`;
+  $("urgent").classList.add("show");
+  if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 600]);
+  if (Notification?.permission === "granted") {
+    new Notification(`🚨 URGENT — ${i.from} a révélé l'activité secrète !`, {
+      body: i.secret,
+      icon: "./icon-192.png",
+      requireInteraction: true,
+      tag: "reveal-" + i.id
+    });
+  }
+}
+
+window.closeUrgent = () => {
+  $("urgent").classList.remove("show");
+  if (navigator.vibrate) navigator.vibrate(0);
+};
 
 /* ---------- Emojis ---------- */
 $("emojiSeg").innerHTML = EMOJIS.map(e =>
