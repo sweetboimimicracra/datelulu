@@ -274,7 +274,13 @@
           <option value="🚄 Train">🚄 Train</option>
           <option value="🚗 Voiture">🚗 Voiture</option>
           <option value="⛴️ Bateau">⛴️ Bateau</option>
+          <option value="🚌 Bus">🚌 Bus</option>
+          <option value="🏍️ Moto">🏍️ Moto</option>
         </select>
+        <div class="toggle">
+          <div><b>🤫 Transport secret</b><div class="muted">Dévoilé au départ (ou avec l'activité secrète)</div></div>
+          <label class="switch"><input type="checkbox" id="invHideTransport"><span class="slider"></span></label>
+        </div>
         <label>À prendre dans la valise</label><input id="invPacking" placeholder="maillot, chaussures de marche…">
       </div>
       <div id="durationWrap">
@@ -529,6 +535,7 @@ window.sendInvite = async () => {
     duration: invType === "trip" ? 0 : +$("invDuration").value,
     returnDate: invType === "trip" ? $("invReturn").value : "",
     transport: invType === "trip" ? $("invTransport").value : "",
+    hideTransport: invType === "trip" && $("invHideTransport").checked,
     packing: invType === "trip" ? $("invPacking").value.trim() : "",
     place: $("invPlace").value.trim(), dress: $("invDress").value.trim(),
     note: $("invNote").value.trim(), emoji: chosenEmoji,
@@ -551,6 +558,7 @@ window.sendInvite = async () => {
       if (old.note !== data.note) changes.push("le petit mot");
     }
     if (old?.secret !== data.secret) changes.push("l'activité secrète");
+    if (old?.transport !== data.transport && !data.hideTransport) changes.push("le transport");
     await put(editingId, {
       ...data,
       // un secret déjà révélé le reste
@@ -568,7 +576,7 @@ window.sendInvite = async () => {
 
   $("invTitle").value = $("invPlace").value = $("invDress").value = $("invNote").value = "";
   $("invSecret").value = $("invPacking").value = "";
-  $("invHasSecret").checked = false;
+  $("invHasSecret").checked = $("invHideTransport").checked = false;
   $("secretFields").style.display = "none";
   $("invPlaceMap").style.display = "none";
   show("invites");
@@ -583,6 +591,7 @@ window.editCurrent = () => {
     b.classList.toggle("sel", b.dataset.type === invType));
   $("invReturn").value = i.returnDate || "";
   $("invTransport").value = i.transport || "";
+  $("invHideTransport").checked = !!i.hideTransport;
   $("invPacking").value = i.packing || "";
   $("invHasSecret").checked = !!i.secret;
   $("invSecret").value = i.secret || "";
@@ -799,7 +808,10 @@ function showDetails(i) {
     d("🗓️", trip ? "DÉPART" : "QUAND", fmtFull(new Date(i.date))) +
     (trip && i.returnDate ? d("🔙","RETOUR", fmtFull(new Date(i.returnDate))) : "") +
     place +
-    (trip ? d("🚉","TRANSPORT", i.transport) + d("🧳","DANS LA VALISE", i.packing) : "") +
+    (trip ? d("🚉","TRANSPORT", transportVisible(i, i.from === store.name)
+        ? i.transport
+        : (i.transport ? "🤫 Surprise — tu le découvriras au départ" : ""))
+      + d("🧳","DANS LA VALISE", i.packing) : "") +
     d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
     d("💌","DE LA PART DE", i.from) + updated;
   $("ovDetails").insertAdjacentHTML("beforeend", vaultHtml(i));
@@ -822,7 +834,8 @@ function calDescription(i) {
   return [
     i.note && "💬 " + i.note,
     i.dress && "👗 Dress code : " + i.dress,
-    i.type === "trip" && i.transport && "🚉 " + i.transport,
+    i.type === "trip" && i.transport && (transportVisible(i, i.from === store.name)
+      ? "🚉 " + i.transport : "🚉 Transport surprise 🤫"),
     i.type === "trip" && i.packing && "🧳 À prendre : " + i.packing,
     i.secret && (secretUnlocked(i)
       ? "🔓 Activité secrète : " + i.secret
@@ -963,6 +976,15 @@ $("invHasSecret").addEventListener("change", () => {
 $("invRevealMode").addEventListener("change", () => {
   $("revealAtWrap").style.display = $("invRevealMode").value === "scheduled" ? "block" : "none";
 });
+
+/* Le transport est-il visible pour le destinataire ?
+   Il se dévoile à l'heure du départ, ou en même temps que l'activité secrète. */
+function transportVisible(i, forMe) {
+  if (!i.hideTransport) return true;
+  if (forMe) return true;                       // l'auteur voit toujours tout
+  if (secretUnlocked(i)) return true;
+  return new Date(i.date) <= new Date();
+}
 
 /* Une activité secrète est-elle visible pour le destinataire ? */
 function secretUnlocked(i) {
