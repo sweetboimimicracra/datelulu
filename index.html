@@ -56,7 +56,21 @@
     color: var(--deep); text-decoration: none;
   }
   .cal-row { display: flex; gap: 8px; width: 100%; max-width: 340px; }
-  .cal-row .btn { margin-top: 0; font-size: 14px; padding: 12px 8px; }
+  .cal-row .btn {
+    margin-top: 0; font-size: 14px; padding: 10px 8px;
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+  }
+  .cal-ic { width: 22px; height: 22px; flex: none; }
+  .edit-banner {
+    background: #fff0d9; color: #a4652a; border-radius: 12px;
+    padding: 10px 12px; font-size: 13px; font-weight: 600; margin-bottom: 10px;
+    display: none;
+  }
+  .edit-banner.show { display: block; }
+  .updated-tag {
+    display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700;
+    color: #a4652a; background: #fff0d9; padding: 3px 8px; border-radius: 999px;
+  }
   .card {
     background: #fff; border-radius: 18px; padding: 16px;
     box-shadow: 0 6px 20px rgba(242,114,160,.18); margin-bottom: 12px;
@@ -209,6 +223,7 @@
 
   <!-- ======== CRÉER ======== -->
   <div id="create" class="screen">
+    <div class="edit-banner" id="editBanner">✏️ Tu modifies une invitation existante — ton/ta partenaire sera prévenu·e.</div>
     <div class="card">
       <label>Titre (ex. Dîner surprise)</label><input id="invTitle">
       <label>Quand</label><input type="datetime-local" id="invDate">
@@ -232,7 +247,8 @@
         <div><b>Irréfusable 😈</b><div class="muted">Le bouton « Refuser » s'enfuit</div></div>
         <label class="switch"><input type="checkbox" id="invUnref" checked><span class="slider"></span></label>
       </div>
-      <button class="btn" onclick="sendInvite()">Envoyer l'invitation 💌</button>
+      <button class="btn" id="sendBtn" onclick="sendInvite()">Envoyer l'invitation 💌</button>
+      <button class="btn secondary" id="cancelEditBtn" style="display:none" onclick="cancelEdit()">Annuler la modification</button>
     </div>
   </div>
 
@@ -277,9 +293,28 @@
     <div style="font-size:64px" id="ovEmoji"></div>
     <h1 id="ovTitle">C'est un date ! 💖</h1>
     <div class="detail-card" id="ovDetails"></div>
+    <button class="btn secondary" id="editInviteBtn" style="max-width:340px;display:none" onclick="editCurrent()">✏️ Modifier cette invitation</button>
     <div class="cal-row">
-      <button class="btn secondary" onclick="addToApple()">📅 Calendrier iPhone</button>
-      <button class="btn secondary" onclick="addToGoogle()">🗓️ Google Agenda</button>
+      <button class="btn secondary" onclick="addToApple()">
+        <svg class="cal-ic" viewBox="0 0 40 40" aria-hidden="true">
+          <rect x="2" y="4" width="36" height="34" rx="8" fill="#fff" stroke="#d8d8dd" stroke-width="1.5"/>
+          <text x="20" y="15" text-anchor="middle" font-size="8" font-weight="700" fill="#ff3b30" font-family="-apple-system,sans-serif">SAM.</text>
+          <text x="20" y="33" text-anchor="middle" font-size="17" font-weight="400" fill="#1c1c1e" font-family="-apple-system,sans-serif">31</text>
+        </svg>
+        Calendrier
+      </button>
+      <button class="btn secondary" onclick="addToGoogle()">
+        <svg class="cal-ic" viewBox="0 0 40 40" aria-hidden="true">
+          <rect x="4" y="4" width="32" height="32" rx="4" fill="#fff"/>
+          <path d="M4 8a4 4 0 014-4h8v8H4z" fill="#4285f4"/>
+          <path d="M24 4h8a4 4 0 014 4v8h-8V4z" fill="#ea4335"/>
+          <path d="M36 24v8a4 4 0 01-4 4h-8v-8h12z" fill="#fbbc04"/>
+          <path d="M4 24h8v12H8a4 4 0 01-4-4v-8z" fill="#34a853"/>
+          <rect x="12" y="12" width="16" height="16" fill="#fff" stroke="#dadce0"/>
+          <text x="20" y="25" text-anchor="middle" font-size="11" font-weight="600" fill="#4285f4" font-family="Arial,sans-serif">31</text>
+        </svg>
+        Google
+      </button>
     </div>
     <button class="btn" style="max-width:240px" onclick="closeOverlay()">C'est noté 💘</button>
   </div>
@@ -313,7 +348,10 @@ const store = {
   get code() { return localStorage.getItem("coupleCode") || ""; },
   set code(v) { localStorage.setItem("coupleCode", v); },
 };
-let db = null, items = [], knownIds = new Set(JSON.parse(localStorage.getItem("known") || "[]"));
+let db = null, items = [];
+// Migration : les anciennes clés étaient de simples ids, désormais "id@updated".
+let knownIds = new Set(JSON.parse(localStorage.getItem("known") || "[]")
+  .map(k => k.includes("@") ? k : k + "@0"));
 const EMOJIS = ["🍝","🎬","🌅","🥂","🎳","🌹","🏞️","🎨"];
 const mapsUrl = place => "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(place);
 let chosenEmoji = "🍝";
@@ -392,21 +430,78 @@ window.deleteItem = async (id) => {
 };
 
 /* ---------- Invitations ---------- */
+let editingId = null;
+
 window.sendInvite = async () => {
   const title = $("invTitle").value.trim();
   const date = $("invDate").value;
   if (!title || !date) return alert("Il faut au moins un titre et une date 💌");
-  const id = "inv-" + Date.now();
-  await put(id, {
+
+  const data = {
     kind: "invite", from: store.name, title, date,
     duration: +$("invDuration").value,
     place: $("invPlace").value.trim(), dress: $("invDress").value.trim(),
     note: $("invNote").value.trim(), emoji: chosenEmoji,
-    unrefusable: $("invUnref").checked, status: "pending", created: Date.now()
-  });
+    unrefusable: $("invUnref").checked
+  };
+
+  if (editingId) {
+    // Modification : on garde le statut et la date de création,
+    // et on estampille la mise à jour pour notifier l'autre.
+    const old = items.find(i => i.id === editingId);
+    const changes = [];
+    if (old) {
+      if (old.title !== data.title) changes.push("le programme");
+      if (old.date !== data.date) changes.push("la date");
+      if (old.place !== data.place) changes.push("le lieu");
+      if (old.dress !== data.dress) changes.push("le dress code");
+      if (old.note !== data.note) changes.push("le petit mot");
+    }
+    await put(editingId, {
+      ...data,
+      status: old?.status || "pending",
+      created: old?.created || Date.now(),
+      updated: Date.now(),
+      updatedBy: store.name,
+      changes: changes.join(", ")
+    });
+    cancelEdit();
+  } else {
+    await put("inv-" + Date.now(), { ...data, status: "pending", created: Date.now() });
+  }
+
   $("invTitle").value = $("invPlace").value = $("invDress").value = $("invNote").value = "";
   $("invPlaceMap").style.display = "none";
   show("invites");
+};
+
+/* ---------- Modifier une invitation existante ---------- */
+window.editCurrent = () => {
+  const i = currentInvite; if (!i) return;
+  editingId = i.id;
+  $("invTitle").value = i.title || "";
+  $("invDate").value = i.date || "";
+  $("invDuration").value = String(i.duration || 120);
+  $("invPlace").value = i.place || "";
+  $("invDress").value = i.dress || "";
+  $("invNote").value = i.note || "";
+  $("invUnref").checked = !!i.unrefusable;
+  chosenEmoji = i.emoji || "🍝";
+  document.querySelectorAll("#emojiSeg button").forEach(b =>
+    b.classList.toggle("sel", b.dataset.e === chosenEmoji));
+  updateMapLink();
+  $("editBanner").classList.add("show");
+  $("sendBtn").textContent = "Enregistrer les modifications ✏️";
+  $("cancelEditBtn").style.display = "block";
+  closeOverlay();
+  show("create");
+};
+
+window.cancelEdit = () => {
+  editingId = null;
+  $("editBanner").classList.remove("show");
+  $("sendBtn").textContent = "Envoyer l'invitation 💌";
+  $("cancelEditBtn").style.display = "none";
 };
 
 /* ---------- Rendu ---------- */
@@ -454,12 +549,12 @@ function render() {
     return `<div class="item" onclick="${action}" style="cursor:pointer">
       <span class="emoji-big">${mystery ? "🎁" : i.emoji}</span>
       <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}</b>
-      <span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`;
+      <span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`;
   }).join("") : `<div class="muted">Aucune invitation… pour l'instant 👀</div>`;
   $("sentList").innerHTML = sent.length ? sent.map(i =>
     `<div class="item" onclick="viewInvite('${i.id}')" style="cursor:pointer">
      <span class="emoji-big">${i.emoji}</span>
-     <div class="t"><b>${esc(i.title)}</b><span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`
+     <div class="t"><b>${esc(i.title)}</b><span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`
   ).join("") : `<div class="muted">Tu n'as encore rien envoyé. À toi de jouer 😏</div>`;
 
   // Ouverture auto d'une invitation en attente
@@ -471,12 +566,25 @@ function esc(s) { const d = document.createElement("div"); d.textContent = s || 
 
 /* ---------- Notifications (app ouverte) ---------- */
 function notifyNews() {
-  const news = items.filter(it => !knownIds.has(it.id) && it.from !== store.name);
-  for (const it of news) {
-    knownIds.add(it.id);
+  // La clé inclut la date de mise à jour : une invitation modifiée
+  // redevient « nouvelle » et déclenche donc une notification.
+  for (const it of items) {
+    if (it.from === store.name) continue;
+    const key = it.id + "@" + (it.updated || 0);
+    if (knownIds.has(key)) continue;
+    const isUpdate = !!it.updated && knownIds.has(it.id + "@0");
+    knownIds.add(key);
     if (Notification?.permission === "granted") {
-      const title = it.kind === "invite" ? `💌 ${it.from} t'invite à un date !` : `🟢 ${it.from} a publié une dispo`;
-      const body = it.kind === "invite" ? (it.unrefusable ? "Invitation mystère… bonne chance pour refuser 😏" : it.title) : "";
+      let title, body;
+      if (it.kind === "slot") {
+        title = `🟢 ${it.from} a publié une dispo`; body = "";
+      } else if (isUpdate) {
+        title = `✏️ ${it.from} a modifié votre date`;
+        body = it.changes ? "Changement : " + it.changes : it.title;
+      } else {
+        title = `💌 ${it.from} t'invite à un date !`;
+        body = it.unrefusable ? "Invitation mystère… bonne chance pour refuser 😏" : it.title;
+      }
       new Notification(title, { body, icon: "./icon-192.png" });
     }
   }
@@ -567,10 +675,16 @@ function showDetails(i) {
     ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
        <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
     : "";
+  const updated = i.updated
+    ? `<div class="updated-tag">✏️ Modifié par ${esc(i.updatedBy || i.from)} le ${new Date(i.updated).toLocaleDateString("fr-FR")}${i.changes ? " — " + esc(i.changes) : ""}</div>`
+    : "";
   $("ovDetails").innerHTML =
     d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
     place + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note) +
-    d("💌","DE LA PART DE", i.from);
+    d("💌","DE LA PART DE", i.from) + updated;
+
+  // Seul l'auteur peut modifier son invitation.
+  $("editInviteBtn").style.display = i.from === store.name ? "block" : "none";
 }
 
 /* ---------- Export vers les calendriers ---------- */
