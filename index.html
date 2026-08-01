@@ -25,13 +25,33 @@
     background: linear-gradient(180deg, #ffffff 0%, var(--blush) 40%, var(--rose) 100%);
     background-attachment: fixed;
     color: var(--text);
-    padding-bottom: calc(72px + env(safe-area-inset-bottom));
   }
+  /* Marge basse généreuse : plus rien ne se cache sous la barre d'onglets */
+  main { padding-bottom: calc(120px + env(safe-area-inset-bottom)); }
   header {
     padding: calc(14px + env(safe-area-inset-top)) 20px 10px;
     font-size: 24px; font-weight: 800; color: var(--deep);
   }
   main { padding: 4px 16px 20px; max-width: 560px; margin: 0 auto; }
+  .place-wrap { position: relative; }
+  .suggestions {
+    position: absolute; left: 0; right: 0; top: 100%; z-index: 30;
+    background: #fff; border: 1.5px solid var(--rose); border-radius: 12px;
+    margin-top: 4px; box-shadow: 0 8px 24px rgba(242,114,160,.25);
+    max-height: 220px; overflow-y: auto; display: none;
+  }
+  .suggestions.show { display: block; }
+  .suggestions div {
+    padding: 10px 12px; font-size: 14px; cursor: pointer;
+    border-bottom: 1px solid #ffeef4;
+  }
+  .suggestions div:last-child { border-bottom: none; }
+  .suggestions div:active { background: var(--blush); }
+  .suggestions small { display: block; color: #a9718c; font-size: 12px; }
+  .maplink {
+    display: inline-block; margin-top: 8px; font-size: 13px; font-weight: 700;
+    color: var(--deep); text-decoration: none;
+  }
   .card {
     background: #fff; border-radius: 18px; padding: 16px;
     box-shadow: 0 6px 20px rgba(242,114,160,.18); margin-bottom: 12px;
@@ -42,7 +62,21 @@
     width: 100%; border: 1.5px solid var(--rose); border-radius: 12px;
     padding: 12px; font-size: 16px; margin-top: 8px; background: #fff; color: var(--text);
     font-family: inherit;
+    -webkit-appearance: none; appearance: none;
+    line-height: 1.2; height: 48px;
   }
+  /* Safari iOS agrandit les champs date : on les aligne sur les autres */
+  input[type="datetime-local"] {
+    display: block; min-height: 48px; max-height: 48px;
+    padding: 12px; text-align: left;
+  }
+  input[type="datetime-local"]::-webkit-date-and-time-value {
+    text-align: left; margin: 0; min-height: 20px;
+  }
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(38%) sepia(38%) saturate(1800%) hue-rotate(300deg);
+  }
+  textarea { height: auto; }
   textarea { resize: vertical; min-height: 60px; }
   label { font-size: 13px; font-weight: 600; color: var(--deep); display: block; margin-top: 10px; }
   .btn {
@@ -181,7 +215,12 @@
       </select>
       <label>Ambiance</label>
       <div class="seg" id="emojiSeg"></div>
-      <label>Lieu (révélé après le OUI)</label><input id="invPlace">
+      <label>Lieu (révélé après le OUI)</label>
+      <div class="place-wrap">
+        <input id="invPlace" placeholder="Cherche un restaurant, un parc…" autocomplete="off">
+        <div class="suggestions" id="placeSuggest"></div>
+      </div>
+      <a class="maplink" id="invPlaceMap" href="#" target="_blank" rel="noopener" style="display:none">📍 Voir sur Google Maps</a>
       <label>Dress code</label><input id="invDress">
       <label>Petit mot doux</label><textarea id="invNote"></textarea>
       <div class="toggle">
@@ -267,6 +306,7 @@ const store = {
 };
 let db = null, items = [], knownIds = new Set(JSON.parse(localStorage.getItem("known") || "[]"));
 const EMOJIS = ["🍝","🎬","🌅","🥂","🎳","🌹","🏞️","🎨"];
+const mapsUrl = place => "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(place);
 let chosenEmoji = "🍝";
 const configured = FIREBASE_CONFIG.apiKey !== "COLLE_TA_CONFIG_ICI";
 
@@ -356,6 +396,7 @@ window.sendInvite = async () => {
     unrefusable: $("invUnref").checked, status: "pending", created: Date.now()
   });
   $("invTitle").value = $("invPlace").value = $("invDress").value = $("invNote").value = "";
+  $("invPlaceMap").style.display = "none";
   show("invites");
 };
 
@@ -480,9 +521,13 @@ $("btnYes").addEventListener("click", async () => {
   const i = currentInvite;
   $("ovEmoji").textContent = i.emoji;
   const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
+  const place = i.place
+    ? `<div class="d"><span>📍</span><div><small>OÙ</small>${esc(i.place)}
+       <a class="maplink" href="${mapsUrl(i.place)}" target="_blank" rel="noopener">Ouvrir dans Google Maps ↗</a></div></div>`
+    : "";
   $("ovDetails").innerHTML =
     d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
-    d("📍","OÙ", i.place) + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note);
+    place + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note);
   $("ovAccepted").style.display = "flex";
   confetti();
 });
@@ -504,6 +549,56 @@ function confetti() {
     $("inviteOverlay").appendChild(s);
   }
 }
+
+/* ---------- Recherche de lieu (Photon / OpenStreetMap, gratuit) ---------- */
+function updateMapLink() {
+  const v = $("invPlace").value.trim();
+  const link = $("invPlaceMap");
+  if (v) { link.href = mapsUrl(v); link.style.display = "inline-block"; }
+  else { link.style.display = "none"; }
+}
+
+let searchTimer = null;
+$("invPlace").addEventListener("input", () => {
+  updateMapLink();
+  clearTimeout(searchTimer);
+  const q = $("invPlace").value.trim();
+  const box = $("placeSuggest");
+  if (q.length < 3) { box.classList.remove("show"); return; }
+  searchTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=fr`);
+      const data = await r.json();
+      const results = (data.features || []).map(f => {
+        const p = f.properties;
+        const main = p.name || p.street || "";
+        const rest = [p.housenumber, p.street, p.postcode, p.city, p.country]
+          .filter(Boolean).filter(x => x !== main).join(", ");
+        return { main, rest, full: [main, rest].filter(Boolean).join(", ") };
+      }).filter(x => x.main);
+      if (!results.length) { box.classList.remove("show"); return; }
+      box.innerHTML = results.map((x, i) =>
+        `<div data-i="${i}"><b>${esc(x.main)}</b><small>${esc(x.rest)}</small></div>`).join("");
+      box._results = results;
+      box.classList.add("show");
+    } catch (e) {
+      box.classList.remove("show"); // hors-ligne : saisie manuelle, ça marche quand même
+    }
+  }, 350);
+});
+
+$("placeSuggest").addEventListener("click", e => {
+  const row = e.target.closest("div[data-i]");
+  if (!row) return;
+  const box = $("placeSuggest");
+  $("invPlace").value = box._results[+row.dataset.i].full;
+  box.classList.remove("show");
+  updateMapLink();
+});
+
+document.addEventListener("click", e => {
+  if (!e.target.closest(".place-wrap")) $("placeSuggest").classList.remove("show");
+});
 
 /* ---------- Emojis ---------- */
 $("emojiSeg").innerHTML = EMOJIS.map(e =>
