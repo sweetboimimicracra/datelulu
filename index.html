@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>DateLulu 💘</title>
+<meta name="robots" content="noindex, nofollow">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<style>
+  :root {
+    --blush: #fff2f6;
+    --rose: #ffd6e3;
+    --pink: #f272a0;
+    --deep: #c73873;
+    --text: #5a2340;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { height: 100%; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    background: linear-gradient(180deg, #ffffff 0%, var(--blush) 40%, var(--rose) 100%);
+    background-attachment: fixed;
+    color: var(--text);
+    padding-bottom: calc(72px + env(safe-area-inset-bottom));
+  }
+  header {
+    padding: calc(14px + env(safe-area-inset-top)) 20px 10px;
+    font-size: 24px; font-weight: 800; color: var(--deep);
+  }
+  main { padding: 4px 16px 20px; max-width: 560px; margin: 0 auto; }
+  .card {
+    background: #fff; border-radius: 18px; padding: 16px;
+    box-shadow: 0 6px 20px rgba(242,114,160,.18); margin-bottom: 12px;
+  }
+  .muted { color: #a9718c; font-size: 13px; }
+  h2 { font-size: 15px; color: var(--deep); margin: 18px 4px 8px; }
+  input, select, textarea {
+    width: 100%; border: 1.5px solid var(--rose); border-radius: 12px;
+    padding: 12px; font-size: 16px; margin-top: 8px; background: #fff; color: var(--text);
+    font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  label { font-size: 13px; font-weight: 600; color: var(--deep); display: block; margin-top: 10px; }
+  .btn {
+    display: block; width: 100%; border: none; border-radius: 999px;
+    background: var(--pink); color: #fff; font-size: 17px; font-weight: 700;
+    padding: 14px; margin-top: 14px; cursor: pointer;
+    box-shadow: 0 6px 16px rgba(242,114,160,.4);
+  }
+  .btn.secondary { background: #fff; color: var(--deep); border: 1.5px solid var(--rose); box-shadow: none; }
+  .btn:active { transform: scale(.98); }
+  .row { display: flex; gap: 10px; align-items: center; }
+  .badge { font-size: 11px; padding: 4px 10px; border-radius: 999px; background: var(--rose); color: var(--deep); font-weight: 700; white-space: nowrap; }
+  .badge.ok { background: #ffe0ec; }
+  .badge.wait { background: #fff0d9; color: #a4652a; }
+  .emoji-big { font-size: 28px; }
+  nav {
+    position: fixed; bottom: 0; left: 0; right: 0;
+    display: flex; background: rgba(255,255,255,.92); backdrop-filter: blur(12px);
+    border-top: 1px solid var(--rose);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  nav button {
+    flex: 1; background: none; border: none; padding: 10px 0 8px;
+    font-size: 11px; color: #b98aa2; cursor: pointer; font-weight: 600;
+  }
+  nav button .ic { display: block; font-size: 22px; margin-bottom: 2px; }
+  nav button.active { color: var(--deep); }
+  .day-title { font-weight: 800; color: var(--deep); font-size: 14px; margin: 14px 4px 6px; text-transform: capitalize; }
+  .item { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #ffeef4; }
+  .item:last-child { border-bottom: none; }
+  .item .t { flex: 1; }
+  .item .t b { display: block; font-size: 15px; }
+  .item .t span { font-size: 12px; color: #a9718c; }
+  .seg { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .seg button {
+    border: 1.5px solid var(--rose); background: #fff; border-radius: 999px;
+    padding: 8px 12px; font-size: 18px; cursor: pointer;
+  }
+  .seg button.sel { background: var(--pink); border-color: var(--pink); }
+  .toggle { display: flex; justify-content: space-between; align-items: center; margin-top: 14px; }
+  .switch { position: relative; width: 52px; height: 32px; }
+  .switch input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; inset: 0; background: #eee; border-radius: 999px; transition: .2s; }
+  .slider:before { content: ""; position: absolute; height: 26px; width: 26px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; box-shadow: 0 2px 6px rgba(0,0,0,.2); }
+  .switch input:checked + .slider { background: var(--pink); }
+  .switch input:checked + .slider:before { transform: translateX(20px); }
+  .screen { display: none; }
+  .screen.active { display: block; }
+
+  /* ---- Écran d'invitation plein écran ---- */
+  #inviteOverlay {
+    position: fixed; inset: 0; z-index: 50; display: none;
+    background: linear-gradient(180deg, #fff 0%, var(--blush) 40%, var(--rose) 100%);
+    overflow: hidden;
+  }
+  #inviteOverlay.show { display: block; }
+  .ov-center {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center;
+  }
+  .ov-center h1 { color: var(--deep); font-size: 26px; }
+  .pill { background: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 700; color: var(--deep); box-shadow: 0 6px 16px rgba(242,114,160,.25); }
+  #taunt { min-height: 22px; font-style: italic; color: var(--deep); font-size: 15px; }
+  #btnYes {
+    border: none; border-radius: 999px; background: var(--pink); color: #fff;
+    font-size: 22px; font-weight: 800; padding: 18px 52px; cursor: pointer;
+    box-shadow: 0 8px 22px rgba(242,114,160,.5); transition: transform .25s;
+  }
+  #btnNo {
+    position: absolute; border: none; border-radius: 999px; background: #fff;
+    color: var(--deep); font-size: 16px; font-weight: 700; padding: 14px 30px;
+    box-shadow: 0 6px 16px rgba(242,114,160,.3); cursor: pointer;
+    transition: left .22s cubic-bezier(.34,1.56,.64,1), top .22s cubic-bezier(.34,1.56,.64,1);
+  }
+  .detail-card { background: #fff; border-radius: 22px; padding: 20px; text-align: left; box-shadow: 0 10px 30px rgba(242,114,160,.3); max-width: 340px; width: 100%; }
+  .detail-card .d { display: flex; gap: 10px; margin: 10px 0; }
+  .detail-card .d small { display: block; font-size: 10px; font-weight: 800; color: #c98bab; letter-spacing: .5px; }
+  .confetti { position: absolute; top: -60px; font-size: 26px; animation: fall linear infinite; pointer-events: none; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<header>DateLulu 💘</header>
+<main>
+  <!-- ======== CONFIGURATION ======== -->
+  <div id="setup" class="screen">
+    <div class="card">
+      <b>Bienvenue ! Configurons votre nid 🪺</b>
+      <p class="muted" style="margin-top:6px">Vos dispos et invitations se synchronisent en temps réel entre vos deux téléphones via Firebase (gratuit).</p>
+      <label>Ton prénom</label>
+      <input id="setupName" placeholder="ex. Mimi">
+      <label>Code couple (le même pour vous deux, gardez-le secret)</label>
+      <input id="setupCode" placeholder="ex. mimi-et-riku-2026">
+      <button class="btn" onclick="saveSetup()">C'est parti 💘</button>
+    </div>
+    <div id="configWarning" class="card" style="display:none">
+      <b>⚠️ Firebase pas encore configuré</b>
+      <p class="muted" style="margin-top:6px">Ouvre <code>index.html</code> et colle ta configuration Firebase dans le bloc <code>FIREBASE_CONFIG</code> (voir README, étape 1).</p>
+    </div>
+  </div>
+
+  <!-- ======== SEMAINE ======== -->
+  <div id="week" class="screen">
+    <button class="btn" style="margin-top:4px" onclick="show('newslot')">🟢 Publier une dispo</button>
+    <div id="weekList"></div>
+  </div>
+
+  <!-- ======== NOUVELLE DISPO ======== -->
+  <div id="newslot" class="screen">
+    <div class="card">
+      <b>Je suis dispo…</b>
+      <label>Début</label><input type="datetime-local" id="slotStart">
+      <label>Fin</label><input type="datetime-local" id="slotEnd">
+      <button class="btn" onclick="publishSlot()">Publier 🟢</button>
+      <button class="btn secondary" onclick="show('week')">Annuler</button>
+    </div>
+  </div>
+
+  <!-- ======== INVITATIONS ======== -->
+  <div id="invites" class="screen">
+    <h2>Reçues 💌</h2><div id="receivedList" class="card"></div>
+    <h2>Envoyées 📤</h2><div id="sentList" class="card"></div>
+  </div>
+
+  <!-- ======== CRÉER ======== -->
+  <div id="create" class="screen">
+    <div class="card">
+      <label>Titre (ex. Dîner surprise)</label><input id="invTitle">
+      <label>Quand</label><input type="datetime-local" id="invDate">
+      <label>Durée</label>
+      <select id="invDuration">
+        <option value="60">1 h</option><option value="90">1 h 30</option>
+        <option value="120" selected>2 h</option><option value="180">3 h</option>
+        <option value="240">4 h</option>
+      </select>
+      <label>Ambiance</label>
+      <div class="seg" id="emojiSeg"></div>
+      <label>Lieu (révélé après le OUI)</label><input id="invPlace">
+      <label>Dress code</label><input id="invDress">
+      <label>Petit mot doux</label><textarea id="invNote"></textarea>
+      <div class="toggle">
+        <div><b>Irréfusable 😈</b><div class="muted">Le bouton « Refuser » s'enfuit</div></div>
+        <label class="switch"><input type="checkbox" id="invUnref" checked><span class="slider"></span></label>
+      </div>
+      <button class="btn" onclick="sendInvite()">Envoyer l'invitation 💌</button>
+    </div>
+  </div>
+
+  <!-- ======== RÉGLAGES ======== -->
+  <div id="settings" class="screen">
+    <div class="card">
+      <label>Ton prénom</label><input id="setName">
+      <label>Code couple</label><input id="setCode">
+      <button class="btn secondary" onclick="saveSettings()">Enregistrer</button>
+    </div>
+    <div class="card">
+      <b>Inviter ton/ta partenaire 💌</b>
+      <p class="muted" style="margin-top:6px">Envoie-lui le lien de l'app et votre code couple. Sur iPhone : Safari → Partager → « Sur l'écran d'accueil ».</p>
+      <button class="btn" onclick="shareApp()">Partager le lien par iMessage</button>
+    </div>
+    <div class="card">
+      <b>Notifications</b>
+      <p class="muted" style="margin-top:6px">Alerte quand une invitation ou une dispo arrive (app installée sur l'écran d'accueil, iOS 16.4+).</p>
+      <button class="btn secondary" onclick="askNotif()">Activer les notifications</button>
+    </div>
+  </div>
+</main>
+
+<nav id="tabbar" style="display:none">
+  <button data-t="week" class="active"><span class="ic">🗓️</span>Semaine</button>
+  <button data-t="invites"><span class="ic">💌</span>Invitations</button>
+  <button data-t="create"><span class="ic">➕</span>Créer</button>
+  <button data-t="settings"><span class="ic">⚙️</span>Réglages</button>
+</nav>
+
+<!-- ======== OVERLAY INVITATION ======== -->
+<div id="inviteOverlay">
+  <div class="ov-center" id="ovPending">
+    <div style="font-size:80px">💌</div>
+    <h1 id="ovFrom"></h1>
+    <div class="pill" id="ovDate"></div>
+    <div class="muted" id="ovHint">Les détails ? Dis OUI d'abord 😏</div>
+    <div id="taunt"></div>
+    <button id="btnYes">OUI !! 🥰</button>
+  </div>
+  <div class="ov-center" id="ovAccepted" style="display:none">
+    <div style="font-size:64px" id="ovEmoji"></div>
+    <h1>C'est un date ! 💖</h1>
+    <div class="detail-card" id="ovDetails"></div>
+    <button class="btn" style="max-width:240px" onclick="closeOverlay()">C'est noté 💘</button>
+  </div>
+  <button id="btnNo">Refuser 😢</button>
+</div>
+
+<script type="module">
+/* ================================================================
+   ÉTAPE 1 (README) : colle ici la config de TON projet Firebase.
+   Console Firebase → Paramètres du projet → Tes applications → Config
+   ================================================================ */
+const FIREBASE_CONFIG = {
+  apiKey: "COLLE_TA_CONFIG_ICI",
+  authDomain: "xxx.firebaseapp.com",
+  projectId: "xxx",
+  storageBucket: "xxx.appspot.com",
+  messagingSenderId: "000",
+  appId: "0:000:web:000"
+};
+/* ================================================================ */
+
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const $ = id => document.getElementById(id);
+const store = {
+  get name() { return localStorage.getItem("myName") || ""; },
+  set name(v) { localStorage.setItem("myName", v); },
+  get code() { return localStorage.getItem("coupleCode") || ""; },
+  set code(v) { localStorage.setItem("coupleCode", v); },
+};
+let db = null, items = [], knownIds = new Set(JSON.parse(localStorage.getItem("known") || "[]"));
+const EMOJIS = ["🍝","🎬","🌅","🥂","🎳","🌹","🏞️","🎨"];
+let chosenEmoji = "🍝";
+const configured = FIREBASE_CONFIG.apiKey !== "COLLE_TA_CONFIG_ICI";
+
+/* ---------- Navigation ---------- */
+window.show = (id) => {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  $(id).classList.add("active");
+  document.querySelectorAll("nav button").forEach(b =>
+    b.classList.toggle("active", b.dataset.t === id));
+};
+document.querySelectorAll("nav button").forEach(b =>
+  b.addEventListener("click", () => show(b.dataset.t)));
+
+/* ---------- Setup ---------- */
+window.saveSetup = () => {
+  const n = $("setupName").value.trim(), c = $("setupCode").value.trim();
+  if (!n || !c) return alert("Prénom et code couple, s'il te plaît 🙏");
+  store.name = n; store.code = c;
+  start();
+};
+window.saveSettings = () => {
+  store.name = $("setName").value.trim();
+  store.code = $("setCode").value.trim();
+  location.reload();
+};
+window.shareApp = () => {
+  const text = `Coucou 💘 Je nous ai fait une app : DateLulu !\n1. Ouvre ${location.href}\n2. Safari → Partager → « Sur l'écran d'accueil »\n3. Entre ton prénom et notre code couple : « ${store.code} »\nÀ tout de suite 😘 — ${store.name}`;
+  if (navigator.share) navigator.share({ text });
+  else { navigator.clipboard.writeText(text); alert("Message copié ! Colle-le dans iMessage 💌"); }
+};
+window.askNotif = async () => {
+  if (!("Notification" in window)) return alert("Notifications non disponibles sur ce navigateur.");
+  const p = await Notification.requestPermission();
+  alert(p === "granted" ? "Notifications activées 💖" : "Notifications refusées 😢");
+};
+
+/* ---------- Firebase ---------- */
+async function start() {
+  if (!store.name || !store.code || !configured) {
+    show("setup");
+    if (!configured) $("configWarning").style.display = "block";
+    $("tabbar").style.display = "none";
+    return;
+  }
+  $("tabbar").style.display = "flex";
+  $("setName").value = store.name;
+  $("setCode").value = store.code;
+  show("week");
+
+  const app = initializeApp(FIREBASE_CONFIG);
+  await signInAnonymously(getAuth(app));
+  db = getFirestore(app);
+  onSnapshot(collection(db, "couples", store.code, "items"), snap => {
+    items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+    notifyNews();
+  });
+}
+
+async function put(id, data) {
+  await setDoc(doc(db, "couples", store.code, "items", id), data);
+}
+
+/* ---------- Dispos ---------- */
+window.publishSlot = async () => {
+  const s = $("slotStart").value, e = $("slotEnd").value;
+  if (!s || !e) return alert("Choisis un début et une fin 🙂");
+  const id = "slot-" + Date.now();
+  await put(id, { kind: "slot", from: store.name, start: s, end: e, created: Date.now() });
+  show("week");
+};
+window.deleteItem = async (id) => {
+  if (confirm("Supprimer ?")) await deleteDoc(doc(db, "couples", store.code, "items", id));
+};
+
+/* ---------- Invitations ---------- */
+window.sendInvite = async () => {
+  const title = $("invTitle").value.trim();
+  const date = $("invDate").value;
+  if (!title || !date) return alert("Il faut au moins un titre et une date 💌");
+  const id = "inv-" + Date.now();
+  await put(id, {
+    kind: "invite", from: store.name, title, date,
+    duration: +$("invDuration").value,
+    place: $("invPlace").value.trim(), dress: $("invDress").value.trim(),
+    note: $("invNote").value.trim(), emoji: chosenEmoji,
+    unrefusable: $("invUnref").checked, status: "pending", created: Date.now()
+  });
+  $("invTitle").value = $("invPlace").value = $("invDress").value = $("invNote").value = "";
+  show("invites");
+};
+
+/* ---------- Rendu ---------- */
+const fmtDay = d => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+const fmtTime = d => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+const fmtFull = d => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) + " à " + fmtTime(d);
+
+function render() {
+  // Semaine
+  let html = "";
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(); day.setHours(0,0,0,0); day.setDate(day.getDate() + i);
+    const next = new Date(day); next.setDate(day.getDate() + 1);
+    const todays = items.filter(it => {
+      const d = new Date(it.kind === "slot" ? it.start : it.date);
+      return d >= day && d < next && it.status !== "declined";
+    }).sort((a,b) => new Date(a.start || a.date) - new Date(b.start || b.date));
+    html += `<div class="day-title">${fmtDay(day)}</div><div class="card">`;
+    if (!todays.length) html += `<div class="muted">Rien de prévu 🍃</div>`;
+    for (const it of todays) {
+      if (it.kind === "slot") {
+        const del = it.from === store.name ? `<button class="badge" onclick="deleteItem('${it.id}')">✕</button>` : "";
+        html += `<div class="item"><span class="emoji-big">🟢</span><div class="t"><b>${esc(it.from)} dispo</b><span>${fmtTime(new Date(it.start))} – ${fmtTime(new Date(it.end))}</span></div>${del}</div>`;
+      } else {
+        const mystery = it.unrefusable && it.status === "pending" && it.from !== store.name;
+        const icon = it.status === "accepted" ? "💖" : "💌";
+        const t = mystery ? `Date mystère avec ${esc(it.from)}…` : esc(it.title);
+        html += `<div class="item"><span class="emoji-big">${icon}</span><div class="t"><b>${t}</b><span>${fmtTime(new Date(it.date))}</span></div></div>`;
+      }
+    }
+    html += `</div>`;
+  }
+  $("weekList").innerHTML = html;
+
+  // Invitations
+  const invs = items.filter(i => i.kind === "invite").sort((a,b) => b.created - a.created);
+  const badge = s => s === "accepted" ? `<span class="badge ok">Accepté 💖</span>`
+    : s === "declined" ? `<span class="badge">Refusé 💔</span>` : `<span class="badge wait">En attente</span>`;
+  const recv = invs.filter(i => i.from !== store.name);
+  const sent = invs.filter(i => i.from === store.name);
+  $("receivedList").innerHTML = recv.length ? recv.map(i => {
+    const mystery = i.unrefusable && i.status === "pending";
+    return `<div class="item" onclick="${i.status === 'pending' ? `openInvite('${i.id}')` : ''}" style="cursor:pointer">
+      <span class="emoji-big">${mystery ? "🎁" : i.emoji}</span>
+      <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}</b>
+      <span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`;
+  }).join("") : `<div class="muted">Aucune invitation… pour l'instant 👀</div>`;
+  $("sentList").innerHTML = sent.length ? sent.map(i =>
+    `<div class="item"><span class="emoji-big">${i.emoji}</span>
+     <div class="t"><b>${esc(i.title)}</b><span>${fmtFull(new Date(i.date))}</span></div>${badge(i.status)}</div>`
+  ).join("") : `<div class="muted">Tu n'as encore rien envoyé. À toi de jouer 😏</div>`;
+
+  // Ouverture auto d'une invitation en attente
+  const pending = recv.find(i => i.status === "pending");
+  if (pending && !overlayOpen) openInvite(pending.id);
+}
+
+function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+
+/* ---------- Notifications (app ouverte) ---------- */
+function notifyNews() {
+  const news = items.filter(it => !knownIds.has(it.id) && it.from !== store.name);
+  for (const it of news) {
+    knownIds.add(it.id);
+    if (Notification?.permission === "granted") {
+      const title = it.kind === "invite" ? `💌 ${it.from} t'invite à un date !` : `🟢 ${it.from} a publié une dispo`;
+      const body = it.kind === "invite" ? (it.unrefusable ? "Invitation mystère… bonne chance pour refuser 😏" : it.title) : "";
+      new Notification(title, { body, icon: "./icon-192.png" });
+    }
+  }
+  localStorage.setItem("known", JSON.stringify([...knownIds]));
+}
+
+/* ---------- Overlay invitation + bouton fuyant ---------- */
+let overlayOpen = false, currentInvite = null, attempts = 0;
+const TAUNTS = ["Hé, pas si vite ! 😏","Ce bouton est un peu timide…","Le destin a déjà dit oui pour toi 💫",
+  "Tu croyais vraiment pouvoir refuser ?","Insiste encore, c'est mignon 🥰","Résistance futile détectée 🤖",
+  "Même le bouton veut ce date.","Bon… tu dis oui quand ? 😘"];
+
+window.openInvite = (id) => {
+  currentInvite = items.find(i => i.id === id);
+  if (!currentInvite) return;
+  overlayOpen = true; attempts = 0;
+  $("ovFrom").textContent = `${currentInvite.from} t'invite à un date !`;
+  $("ovDate").textContent = fmtFull(new Date(currentInvite.date));
+  $("ovHint").textContent = currentInvite.unrefusable ? "Les détails ? Dis OUI d'abord 😏" : currentInvite.title;
+  $("taunt").textContent = "";
+  $("ovPending").style.display = "flex";
+  $("ovAccepted").style.display = "none";
+  const no = $("btnNo");
+  no.style.display = "block";
+  no.style.left = "calc(50% - 60px)"; no.style.top = "calc(100% - 110px)";
+  $("btnYes").style.transform = "scale(1)";
+  $("inviteOverlay").classList.add("show");
+};
+
+function dodge() {
+  attempts++;
+  $("taunt").textContent = TAUNTS[Math.floor(Math.random() * TAUNTS.length)];
+  const no = $("btnNo");
+  const x = 40 + Math.random() * (window.innerWidth - 200);
+  const y = 90 + Math.random() * (window.innerHeight - 220);
+  no.style.left = x + "px"; no.style.top = y + "px";
+  $("btnYes").style.transform = `scale(${1 + Math.min(attempts, 12) * 0.05})`;
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+["pointerdown","touchstart","mouseenter"].forEach(ev =>
+  $("btnNo").addEventListener(ev, e => {
+    if (currentInvite?.unrefusable) { e.preventDefault(); dodge(); }
+  }, { passive: false }));
+$("btnNo").addEventListener("click", async () => {
+  if (currentInvite?.unrefusable) return;
+  await updateDoc(doc(db, "couples", store.code, "items", currentInvite.id), { status: "declined" });
+  closeOverlay();
+});
+
+$("btnYes").addEventListener("click", async () => {
+  await updateDoc(doc(db, "couples", store.code, "items", currentInvite.id), { status: "accepted" });
+  $("ovPending").style.display = "none";
+  $("btnNo").style.display = "none";
+  const i = currentInvite;
+  $("ovEmoji").textContent = i.emoji;
+  const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
+  $("ovDetails").innerHTML =
+    d("✨","PROGRAMME", i.title) + d("🗓️","QUAND", fmtFull(new Date(i.date))) +
+    d("📍","OÙ", i.place) + d("👗","DRESS CODE", i.dress) + d("💬","PETIT MOT", i.note);
+  $("ovAccepted").style.display = "flex";
+  confetti();
+});
+
+window.closeOverlay = () => {
+  overlayOpen = false; currentInvite = null;
+  $("inviteOverlay").classList.remove("show");
+  document.querySelectorAll(".confetti").forEach(c => c.remove());
+};
+
+function confetti() {
+  const em = ["❤️","💖","✨","💘","🌹","💝"];
+  for (let i = 0; i < 26; i++) {
+    const s = document.createElement("div");
+    s.className = "confetti"; s.textContent = em[i % em.length];
+    s.style.left = Math.random() * 100 + "vw";
+    s.style.animationDuration = (2.5 + Math.random() * 3) + "s";
+    s.style.animationDelay = Math.random() * 2 + "s";
+    $("inviteOverlay").appendChild(s);
+  }
+}
+
+/* ---------- Emojis ---------- */
+$("emojiSeg").innerHTML = EMOJIS.map(e =>
+  `<button type="button" class="${e === chosenEmoji ? 'sel' : ''}" data-e="${e}">${e}</button>`).join("");
+$("emojiSeg").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  chosenEmoji = b.dataset.e;
+  document.querySelectorAll("#emojiSeg button").forEach(x => x.classList.toggle("sel", x === b));
+});
+
+/* ---------- Service worker ---------- */
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
+
+start();
+</script>
+</body>
+</html>
