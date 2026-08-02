@@ -141,9 +141,11 @@
     background: var(--pink); color: #fff;
     flex-direction: column; align-items: center; justify-content: center;
     gap: 14px; padding: 28px; text-align: center;
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
     animation: pulseBg 1.1s ease-in-out infinite alternate;
   }
   #urgent.show { display: flex; }
+  #urgent:not(.show) { pointer-events: none; }
   @keyframes pulseBg { from { background: #f272a0; } to { background: #c73873; } }
   #urgent .big { font-size: 64px; animation: shake .6s ease-in-out infinite; }
   @keyframes shake { 0%,100% { transform: rotate(-8deg); } 50% { transform: rotate(8deg); } }
@@ -230,12 +232,25 @@
   #inviteOverlay {
     position: fixed; inset: 0; z-index: 50; display: none;
     background: linear-gradient(180deg, #fff 0%, var(--blush) 40%, var(--rose) 100%);
-    overflow: hidden;
+    /* Le contenu peut être long (programme + coffre) : il doit défiler,
+       sinon les boutons du bas deviennent inatteignables. */
+    overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   #inviteOverlay.show { display: block; }
+  #inviteOverlay:not(.show) { pointer-events: none; }
   .ov-center {
-    position: absolute; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center;
+    position: relative; min-height: 100%;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 16px;
+    padding: calc(60px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom));
+    text-align: center;
+  }
+  .ov-close {
+    position: fixed; top: calc(12px + env(safe-area-inset-top)); right: 14px; z-index: 60;
+    width: 40px; height: 40px; border-radius: 50%; border: none;
+    background: rgba(255,255,255,.9); color: var(--deep);
+    font-size: 20px; font-weight: 700; cursor: pointer;
+    box-shadow: 0 4px 12px rgba(242,114,160,.3);
   }
   .ov-center h1 { color: var(--deep); font-size: 26px; }
   .pill { background: #fff; padding: 10px 18px; border-radius: 999px; font-weight: 700; color: var(--deep); box-shadow: 0 6px 16px rgba(242,114,160,.25); }
@@ -245,8 +260,10 @@
     font-size: 22px; font-weight: 800; padding: 18px 52px; cursor: pointer;
     box-shadow: 0 8px 22px rgba(242,114,160,.5); transition: transform .25s;
   }
+  /* fixed (et non absolute) : l'overlay défile désormais,
+     le bouton fuyard doit rester dans l'écran visible. */
   #btnNo {
-    position: absolute; border: none; border-radius: 999px; background: #fff;
+    position: fixed; z-index: 55; border: none; border-radius: 999px; background: #fff;
     color: var(--deep); font-size: 16px; font-weight: 700; padding: 14px 30px;
     box-shadow: 0 6px 16px rgba(242,114,160,.3); cursor: pointer;
     transition: left .22s cubic-bezier(.34,1.56,.64,1), top .22s cubic-bezier(.34,1.56,.64,1);
@@ -431,6 +448,7 @@
 
 <!-- ======== OVERLAY INVITATION ======== -->
 <div id="inviteOverlay">
+  <button class="ov-close" id="ovClose" onclick="closeOverlay()">✕</button>
   <div class="ov-center" id="ovPending">
     <div style="font-size:80px">💌</div>
     <h1 id="ovFrom"></h1>
@@ -956,7 +974,10 @@ window.openInvite = (id) => {
   no.style.display = "block";
   no.style.left = "calc(50% - 60px)"; no.style.top = "calc(100% - 110px)";
   $("btnYes").style.transform = "scale(1)";
+  // Une invitation irréfusable non répondue ne se ferme pas… bien essayé 😏
+  $("ovClose").style.display = currentInvite.unrefusable ? "none" : "block";
   $("inviteOverlay").classList.add("show");
+  $("inviteOverlay").scrollTop = 0;
 };
 
 function dodge() {
@@ -1011,7 +1032,9 @@ window.viewInvite = (id) => {
     : inv.status === "declined" ? "Invitation refusée 💔" : "Invitation envoyée 💌";
   showDetails(inv);
   $("ovAccepted").style.display = "flex";
+  $("ovClose").style.display = "block";
   $("inviteOverlay").classList.add("show");
+  $("inviteOverlay").scrollTop = 0;
 };
 
 function showDetails(i) {
@@ -1439,6 +1462,10 @@ $("emojiSeg").addEventListener("click", e => {
   chosenEmoji = b.dataset.e;
   document.querySelectorAll("#emojiSeg button").forEach(x => x.classList.toggle("sel", x === b));
 });
+
+/* Sécurité anti-blocage : aucun écran plein ne survit à un redémarrage. */
+closeOverlay();
+$("urgent").classList.remove("show");
 
 /* Vue mémorisée d'une session à l'autre */
 document.querySelectorAll("#viewSeg button").forEach(b =>
