@@ -71,6 +71,23 @@
     display: inline-block; margin-top: 6px; font-size: 11px; font-weight: 700;
     color: #a4652a; background: #fff0d9; padding: 3px 8px; border-radius: 999px;
   }
+  .view-seg { margin-top: 6px; }
+  .view-seg button { flex: 1; font-size: 13px; font-weight: 700; color: var(--deep); padding: 9px 6px; }
+  .view-seg button.sel { background: var(--pink); border-color: var(--pink); color: #fff; }
+  .nav-btn {
+    border: 1.5px solid var(--rose); background: #fff; color: var(--deep);
+    border-radius: 999px; width: 38px; height: 34px; font-size: 18px; font-weight: 700; cursor: pointer;
+  }
+  .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 10px; }
+  .cal-grid .dow { font-size: 10px; color: #a9718c; text-align: center; font-weight: 700; }
+  .cal-cell {
+    background: #fff; border-radius: 10px; min-height: 46px; padding: 4px 2px;
+    text-align: center; font-size: 12px; cursor: pointer; border: 1px solid transparent;
+  }
+  .cal-cell.out { opacity: .35; }
+  .cal-cell.today { border-color: var(--pink); }
+  .cal-cell .n { font-weight: 700; color: var(--deep); }
+  .cal-cell .dots { font-size: 9px; line-height: 1.1; margin-top: 2px; }
   .add-btn {
     width: 38px; height: 38px; flex: none; border-radius: 50%;
     border: none; background: var(--pink); color: #fff;
@@ -264,7 +281,18 @@
 
   <!-- ======== SEMAINE ======== -->
   <div id="week" class="screen">
-    <button class="btn" style="margin-top:4px" onclick="show('newslot')">🟢 Publier une dispo</button>
+    <div class="seg view-seg" id="viewSeg">
+      <button type="button" class="sel" data-v="week">Semaine</button>
+      <button type="button" data-v="month">Mois</button>
+      <button type="button" data-v="agenda">Agenda</button>
+      <button type="button" data-v="list">Tout</button>
+    </div>
+    <div class="row" style="justify-content:space-between;margin-top:10px" id="navRow">
+      <button class="nav-btn" onclick="shiftPeriod(-1)">‹</button>
+      <b id="periodLabel" style="color:var(--deep);font-size:15px"></b>
+      <button class="nav-btn" onclick="shiftPeriod(1)">›</button>
+    </div>
+    <button class="btn" style="margin-top:10px" onclick="show('newslot')">🟢 Publier une dispo</button>
     <div id="weekList"></div>
   </div>
 
@@ -472,6 +500,23 @@ import { getFirestore, collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const $ = id => document.getElementById(id);
+
+/* Filet de sécurité : une erreur imprévue s'affiche au lieu de figer l'app. */
+function showCrash(msg) {
+  let bar = document.getElementById("crashBar");
+  if (!bar) {
+    bar = document.createElement("div");
+    bar.id = "crashBar";
+    bar.style.cssText = "position:fixed;left:8px;right:8px;bottom:80px;z-index:99;" +
+      "background:#fff0d9;color:#a4652a;border-radius:12px;padding:10px 12px;" +
+      "font-size:12px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.15)";
+    bar.onclick = () => bar.remove();
+    document.body.appendChild(bar);
+  }
+  bar.textContent = "⚠️ " + msg + " (touche pour masquer)";
+}
+window.addEventListener("error", e => showCrash(e.message));
+window.addEventListener("unhandledrejection", e => showCrash(e.reason?.message || e.reason));
 const store = {
   get name() { return localStorage.getItem("myName") || ""; },
   set name(v) { localStorage.setItem("myName", v); },
@@ -545,7 +590,7 @@ async function start() {
 }
 
 async function put(id, data) {
-  await setDoc(doc(db, "couples", store.code, "items", id), data);
+  await setDoc(doc(db, "couples", store.code, "items", id), clean(data));
 }
 
 /* ---------- Dispos ---------- */
@@ -674,37 +719,140 @@ window.cancelEdit = () => {
 };
 
 /* ---------- Rendu ---------- */
-const fmtDay = d => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+/* ============ PLANNING : semaine / mois / agenda / tout ============ */
+let viewMode = localStorage.getItem("viewMode") || "week";
+let periodOffset = 0;   // décalage de semaine ou de mois
+
+$("viewSeg").addEventListener("click", e => {
+  const b = e.target.closest("button[data-v]"); if (!b) return;
+  viewMode = b.dataset.v; periodOffset = 0;
+  localStorage.setItem("viewMode", viewMode);
+  document.querySelectorAll("#viewSeg button").forEach(x => x.classList.toggle("sel", x === b));
+  render();
+});
+
+window.shiftPeriod = (n) => { periodOffset += n; render(); };
+
+const startOfDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
+const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
+const itemDate = it => safeDate(it.kind === "slot" ? it.start : it.date);
+
+/* Tous les éléments triés — sans aucune limite de durée. */
+function allSorted() {
+  return items
+    .filter(it => it.status !== "declined" && itemDate(it))
+    .sort((a, b) => itemDate(a) - itemDate(b));
+}
+
+function dayCardHtml(day) {
+  const next = addDays(day, 1);
+  const todays = allSorted().filter(it => itemDate(it) >= day && itemDate(it) < next);
+  let html = `<div class="day-title">${fmtDay(day)}</div><div class="card">`;
+  if (!todays.length) html += `<div class="muted">Rien de prévu 🍃</div>`;
+  for (const it of todays) html += lineHtml(it);
+  return html + `</div>`;
+}
+
+function lineHtml(it) {
+  if (it.kind === "slot") {
+    const del = it.from === store.name
+      ? `<button class="badge" onclick="event.stopPropagation();deleteItem('${it.id}')">✕</button>` : "";
+    const s = safeDate(it.start), e = safeDate(it.end);
+    return `<div class="item"><span class="emoji-big">🟢</span><div class="t">
+      <b>${esc(it.from)} dispo</b><span>${s ? fmtTime(s) : "?"} – ${e ? fmtTime(e) : "?"}</span>
+      </div>${del}</div>`;
+  }
+  const mystery = it.unrefusable && it.status === "pending" && it.from !== store.name;
+  const icon = it.type === "trip" ? "✈️" : (it.status === "accepted" ? "💖" : "💌");
+  const t = mystery ? `Date mystère avec ${esc(it.from)}…` : esc(it.title);
+  const action = mystery ? `openInvite('${it.id}')` : `viewInvite('${it.id}')`;
+  const d = safeDate(it.date);
+  return `<div class="item" onclick="${action}" style="cursor:pointer">
+    <span class="emoji-big">${icon}</span><div class="t">
+    <b>${t}${it.secret ? (secretUnlocked(it) ? " 🎉" : " 🔒") : ""}</b>
+    <span>${d ? fmtTime(d) : ""}</span></div></div>`;
+}
+
+function renderPlanning() {
+  const box = $("weekList");
+  const today = startOfDay(new Date());
+  $("navRow").style.display = (viewMode === "week" || viewMode === "month") ? "flex" : "none";
+
+  if (viewMode === "week") {
+    const first = addDays(today, periodOffset * 7);
+    $("periodLabel").textContent = periodOffset === 0 ? "7 prochains jours"
+      : `${first.toLocaleDateString("fr-FR",{day:"numeric",month:"short"})} → ${addDays(first,6).toLocaleDateString("fr-FR",{day:"numeric",month:"short"})}`;
+    let html = "";
+    for (let n = 0; n < 7; n++) html += dayCardHtml(addDays(first, n));
+    box.innerHTML = html;
+
+  } else if (viewMode === "month") {
+    const ref = new Date(today.getFullYear(), today.getMonth() + periodOffset, 1);
+    $("periodLabel").textContent = ref.toLocaleDateString("fr-FR", { month: "long", year: "numeric" });
+    const firstDow = (ref.getDay() + 6) % 7;              // lundi = 0
+    const start = addDays(ref, -firstDow);
+    let cells = `<div class="cal-grid">` +
+      ["L","M","M","J","V","S","D"].map(d => `<div class="dow">${d}</div>`).join("");
+    for (let n = 0; n < 42; n++) {
+      const day = addDays(start, n);
+      const next = addDays(day, 1);
+      const list = allSorted().filter(it => itemDate(it) >= day && itemDate(it) < next);
+      const dots = list.slice(0, 3).map(it =>
+        it.kind === "slot" ? "🟢" : (it.type === "trip" ? "✈️" : "💌")).join("");
+      cells += `<div class="cal-cell${day.getMonth() !== ref.getMonth() ? " out" : ""}${
+        day.getTime() === today.getTime() ? " today" : ""}" onclick="openDay('${day.toISOString()}')">
+        <div class="n">${day.getDate()}</div><div class="dots">${dots}</div></div>`;
+    }
+    cells += `</div><div id="dayDetail"></div>`;
+    box.innerHTML = cells;
+
+  } else if (viewMode === "agenda") {
+    // Tout ce qui arrive, sans limite de durée
+    const future = allSorted().filter(it => itemDate(it) >= today);
+    box.innerHTML = future.length
+      ? groupByDay(future)
+      : `<div class="card muted">Rien de prévu pour l'instant 🍃<br>Publie une dispo ou envoie une invitation 💌</div>`;
+
+  } else { // "list" : absolument tout, passé compris, du plus récent au plus ancien
+    const all = allSorted().slice().reverse();
+    box.innerHTML = all.length
+      ? groupByDay(all)
+      : `<div class="card muted">Votre histoire commence ici 💘</div>`;
+  }
+}
+
+function groupByDay(list) {
+  let html = "", currentKey = "";
+  for (const it of list) {
+    const d = itemDate(it);
+    const key = d.toDateString();
+    if (key !== currentKey) {
+      if (currentKey) html += `</div>`;
+      html += `<div class="day-title">${fmtDay(d)}</div><div class="card">`;
+      currentKey = key;
+    }
+    html += lineHtml(it);
+  }
+  return html + (currentKey ? `</div>` : "");
+}
+
+window.openDay = (iso) => {
+  const day = startOfDay(new Date(iso));
+  const el = document.getElementById("dayDetail");
+  if (el) el.innerHTML = dayCardHtml(day);
+};
+
+const fmtDay = d => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" });
 const fmtTime = d => d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
 const fmtFull = d => d.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" }) + " à " + fmtTime(d);
 
 function render() {
-  // Semaine
-  let html = "";
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(); day.setHours(0,0,0,0); day.setDate(day.getDate() + i);
-    const next = new Date(day); next.setDate(day.getDate() + 1);
-    const todays = items.filter(it => {
-      const d = new Date(it.kind === "slot" ? it.start : it.date);
-      return d >= day && d < next && it.status !== "declined";
-    }).sort((a,b) => new Date(a.start || a.date) - new Date(b.start || b.date));
-    html += `<div class="day-title">${fmtDay(day)}</div><div class="card">`;
-    if (!todays.length) html += `<div class="muted">Rien de prévu 🍃</div>`;
-    for (const it of todays) {
-      if (it.kind === "slot") {
-        const del = it.from === store.name ? `<button class="badge" onclick="deleteItem('${it.id}')">✕</button>` : "";
-        html += `<div class="item"><span class="emoji-big">🟢</span><div class="t"><b>${esc(it.from)} dispo</b><span>${fmtTime(new Date(it.start))} – ${fmtTime(new Date(it.end))}</span></div>${del}</div>`;
-      } else {
-        const mystery = it.unrefusable && it.status === "pending" && it.from !== store.name;
-        const icon = it.type === "trip" ? "✈️" : (it.status === "accepted" ? "💖" : "💌");
-        const t = mystery ? `Date mystère avec ${esc(it.from)}…` : esc(it.title);
-        const action = mystery ? `openInvite('${it.id}')` : `viewInvite('${it.id}')`;
-        html += `<div class="item" onclick="${action}" style="cursor:pointer"><span class="emoji-big">${icon}</span><div class="t"><b>${t}</b><span>${fmtTime(new Date(it.date))}</span></div></div>`;
-      }
-    }
-    html += `</div>`;
-  }
-  $("weekList").innerHTML = html;
+  try { renderInner(); }
+  catch (e) { showCrash("Affichage de la liste : " + e.message); }
+}
+
+function renderInner() {
+  renderPlanning();
 
   // Invitations
   const invs = items.filter(i => i.kind === "invite").sort((a,b) => b.created - a.created);
@@ -718,12 +866,12 @@ function render() {
     return `<div class="item" onclick="${action}" style="cursor:pointer">
       <span class="emoji-big">${mystery ? "🎁" : (i.type === "trip" ? "✈️" : i.emoji)}</span>
       <div class="t"><b>${mystery ? "Invitation mystère de " + esc(i.from) : esc(i.title)}${i.secret ? (secretUnlocked(i) ? " 🎉" : " 🔒") : ""}</b>
-      <span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`;
+      <span>${fmtSafe(i.date)}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`;
   }).join("") : `<div class="muted">Aucune invitation… pour l'instant 👀</div>`;
   $("sentList").innerHTML = sent.length ? sent.map(i =>
     `<div class="item" onclick="viewInvite('${i.id}')" style="cursor:pointer">
      <span class="emoji-big">${i.type === "trip" ? "✈️" : i.emoji}</span>
-     <div class="t"><b>${esc(i.title)}${i.secret ? (secretUnlocked(i) ? " 🎉" : " 🔒") : ""}</b><span>${fmtFull(new Date(i.date))}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`
+     <div class="t"><b>${esc(i.title)}${i.secret ? (secretUnlocked(i) ? " 🎉" : " 🔒") : ""}</b><span>${fmtSafe(i.date)}</span>${i.updated ? '<span class="updated-tag">✏️ modifiée</span>' : ''}</div>${badge(i.status)}</div>`
   ).join("") : `<div class="muted">Tu n'as encore rien envoyé. À toi de jouer 😏</div>`;
 
   // Ouverture auto d'une invitation en attente
@@ -731,7 +879,32 @@ function render() {
   if (pending && !overlayOpen) openInvite(pending.id);
 }
 
-function esc(s) { const d = document.createElement("div"); d.textContent = s || ""; return d.innerHTML; }
+function esc(s) { const d = document.createElement("div"); d.textContent = s ?? ""; return d.innerHTML; }
+/* Échappement pour les attributs HTML : esc() ne protège pas les guillemets,
+   ce qui cassait le formulaire dès qu'un titre en contenait. */
+function escAttr(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+/* Date sûre : jamais d'exception si le champ est vide ou invalide. */
+function safeDate(v) {
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? null : d;
+}
+function fmtSafe(v, fallback = "date à préciser") {
+  const d = safeDate(v);
+  return d ? fmtFull(d) : fallback;
+}
+/* Firestore refuse les undefined : on nettoie avant écriture. */
+function clean(obj) {
+  if (Array.isArray(obj)) return obj.map(clean);
+  if (obj && typeof obj === "object") {
+    const out = {};
+    for (const [k, v] of Object.entries(obj)) if (v !== undefined) out[k] = clean(v);
+    return out;
+  }
+  return obj === undefined ? null : obj;
+}
 
 /* ---------- Notifications (app ouverte) ---------- */
 function notifyNews() {
@@ -774,7 +947,7 @@ window.openInvite = (id) => {
   if (!currentInvite) return;
   overlayOpen = true; attempts = 0;
   $("ovFrom").textContent = `${currentInvite.from} t'invite à un date !`;
-  $("ovDate").textContent = fmtFull(new Date(currentInvite.date));
+  $("ovDate").textContent = fmtSafe(currentInvite.date);
   $("ovHint").textContent = currentInvite.unrefusable ? "Les détails ? Dis OUI d'abord 😏" : currentInvite.title;
   $("taunt").textContent = "";
   $("ovPending").style.display = "flex";
@@ -827,7 +1000,7 @@ window.closeOverlay = () => {
 /* ---------- Revoir une invitation (lecture seule) ---------- */
 window.viewInvite = (id) => {
   const inv = items.find(i => i.id === id);
-  if (!inv) return;
+  if (!inv) return showCrash("Invitation introuvable — elle a peut-être été supprimée.");
   currentInvite = inv;
   overlayOpen = true;
   $("ovPending").style.display = "none";
@@ -842,6 +1015,11 @@ window.viewInvite = (id) => {
 };
 
 function showDetails(i) {
+  try { showDetailsInner(i); }
+  catch (e) { showCrash("Affichage : " + e.message); }
+}
+
+function showDetailsInner(i) {
   const d = (ic, l, v) => v ? `<div class="d"><span>${ic}</span><div><small>${l}</small>${esc(v)}</div></div>` : "";
   const mine = i.from === store.name;
   const place = !i.place ? ""
@@ -855,8 +1033,8 @@ function showDetails(i) {
   const trip = i.type === "trip";
   $("ovDetails").innerHTML =
     d("✨", trip ? "VOYAGE" : "PROGRAMME", i.title) +
-    d("🗓️", trip ? "DÉPART" : "QUAND", fmtFull(new Date(i.date))) +
-    (trip && i.returnDate ? d("🔙","RETOUR", fmtFull(new Date(i.returnDate))) : "") +
+    d("🗓️", trip ? "DÉPART" : "QUAND", fmtSafe(i.date)) +
+    (trip && i.returnDate ? d("🔙","RETOUR", fmtSafe(i.returnDate)) : "") +
     place +
     (trip ? d("🚉","TRANSPORT", transportVisible(i, mine)
         ? i.transport
@@ -1034,9 +1212,9 @@ function renderSteps() {
     <div class="step-edit" data-id="${s.id}">
       <div class="head"><b>Étape ${n + 1}</b>
         <button type="button" class="del-btn" onclick="removeStep('${s.id}')">🗑️</button></div>
-      <label>Heure</label><input type="time" class="st-time" value="${s.time || ""}">
-      <label>Quoi ?</label><input class="st-title" value="${esc(s.title)}" placeholder="Balade en barque">
-      <label>Où ?</label><input class="st-place" value="${esc(s.place)}" placeholder="Parc de la Tête d'Or">
+      <label>Heure</label><input type="time" class="st-time" value="${escAttr(s.time)}">
+      <label>Quoi ?</label><input class="st-title" value="${escAttr(s.title)}" placeholder="Balade en barque">
+      <label>Où ?</label><input class="st-place" value="${escAttr(s.place)}" placeholder="Parc de la Tête d'Or">
       <div class="toggle">
         <div><b>🔒 Secrète obligatoire</b></div>
         <label class="switch"><input type="checkbox" class="st-has" ${s.secret ? "checked" : ""}><span class="slider"></span></label>
@@ -1050,7 +1228,7 @@ function renderSteps() {
           <option value="scheduled" ${s.revealAt ? "selected" : ""}>À une date précise</option>
         </select>
         <div class="st-at-wrap" style="display:${s.revealAt ? "block" : "none"}">
-          <input type="datetime-local" class="st-at" value="${s.revealAt || ""}">
+          <input type="datetime-local" class="st-at" value="${escAttr(s.revealAt)}">
         </div>
       </div>
     </div>`).join("");
@@ -1091,7 +1269,7 @@ function stepsHtml(i) {
     let body;
     if (locked) {
       body = `<b>🔒 Étape secrète obligatoire</b>` + (s.revealAt
-        ? `<span class="mini-count" data-reveal="${s.revealAt}">—</span>`
+        ? `<span class="mini-count" data-reveal="${escAttr(s.revealAt)}">—</span>`
         : `<small>${esc(i.from)} la révélera quand bon lui semblera 😈</small>`);
     } else {
       const tag = s.secret ? (stepUnlocked(s) ? "🔓 " : "🔒 ") : "";
@@ -1177,9 +1355,9 @@ function vaultHtml(i) {
       <div class="content">${esc(i.secret)}</div></div>`;
   }
   const when = i.revealAt
-    ? `Révélation programmée : ${fmtFull(new Date(i.revealAt))}`
+    ? `Révélation programmée : ${fmtSafe(i.revealAt)}`
     : `${esc(i.from)} la révélera quand bon lui semblera 😈`;
-  const timer = i.revealAt ? `<div class="countdown" data-reveal="${i.revealAt}">—</div>` : "";
+  const timer = i.revealAt ? `<div class="countdown" data-reveal="${escAttr(i.revealAt)}">—</div>` : "";
   const btn = mine
     ? `<button class="btn" style="margin-top:10px" onclick="revealSecret('${i.id}')">🔓 Révéler maintenant</button>`
     : "";
@@ -1235,7 +1413,7 @@ function fireUrgent(i, step) {
     ? `🚨 ${i.from} révèle une étape secrète !`
     : `🚨 ${i.from} révèle le secret !`;
   $("urgentBody").innerHTML = contenu +
-    `<br><br><span style="font-size:14px;opacity:.9">Ton ${label} du ${fmtFull(new Date(i.date))}</span>`;
+    `<br><br><span style="font-size:14px;opacity:.9">Ton ${label} du ${fmtSafe(i.date)}</span>`;
   $("urgent").classList.add("show");
   if (navigator.vibrate) navigator.vibrate([300, 120, 300, 120, 600]);
   if (Notification?.permission === "granted") {
@@ -1261,6 +1439,10 @@ $("emojiSeg").addEventListener("click", e => {
   chosenEmoji = b.dataset.e;
   document.querySelectorAll("#emojiSeg button").forEach(x => x.classList.toggle("sel", x === b));
 });
+
+/* Vue mémorisée d'une session à l'autre */
+document.querySelectorAll("#viewSeg button").forEach(b =>
+  b.classList.toggle("sel", b.dataset.v === viewMode));
 
 /* ---------- Service worker ---------- */
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("./sw.js");
