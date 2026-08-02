@@ -19,12 +19,20 @@
     --text: #5a2340;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { height: 100%; }
+  /* Surtout PAS height:100% : en app installée sur iOS, la page serait
+     coupée à la hauteur de l'écran et impossible à faire défiler. */
+  html, body {
+    min-height: 100%; height: auto;
+    overflow-x: hidden; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
   body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     background: linear-gradient(180deg, #ffffff 0%, var(--blush) 40%, var(--rose) 100%);
     background-attachment: fixed;
     color: var(--text);
+    min-height: 100dvh;
   }
   header {
     padding: calc(14px + env(safe-area-inset-top)) 20px 10px;
