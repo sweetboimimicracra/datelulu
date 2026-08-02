@@ -1168,6 +1168,19 @@ function updateMapLink() {
   else { link.style.display = "none"; }
 }
 
+/* Recherche d'adresse partagée (OpenStreetMap / Photon, gratuit, sans clé) */
+async function searchPlaces(q) {
+  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=fr`);
+  const data = await r.json();
+  return (data.features || []).map(f => {
+    const p = f.properties;
+    const main = p.name || p.street || "";
+    const rest = [p.housenumber, p.street, p.postcode, p.city, p.country]
+      .filter(Boolean).filter(x => x !== main).join(", ");
+    return { main, rest, full: [main, rest].filter(Boolean).join(", ") };
+  }).filter(x => x.main);
+}
+
 let searchTimer = null;
 $("invPlace").addEventListener("input", () => {
   updateMapLink();
@@ -1177,22 +1190,14 @@ $("invPlace").addEventListener("input", () => {
   if (q.length < 3) { box.classList.remove("show"); return; }
   searchTimer = setTimeout(async () => {
     try {
-      const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(q)}&limit=5&lang=fr`);
-      const data = await r.json();
-      const results = (data.features || []).map(f => {
-        const p = f.properties;
-        const main = p.name || p.street || "";
-        const rest = [p.housenumber, p.street, p.postcode, p.city, p.country]
-          .filter(Boolean).filter(x => x !== main).join(", ");
-        return { main, rest, full: [main, rest].filter(Boolean).join(", ") };
-      }).filter(x => x.main);
-      if (!results.length) { box.classList.remove("show"); return; }
+      const results = await searchPlaces(q);
+      if (!results.length) return box.classList.remove("show");
       box.innerHTML = results.map((x, i) =>
         `<div data-i="${i}"><b>${esc(x.main)}</b><small>${esc(x.rest)}</small></div>`).join("");
       box._results = results;
       box.classList.add("show");
-    } catch (e) {
-      box.classList.remove("show"); // hors-ligne : saisie manuelle, ça marche quand même
+    } catch {
+      box.classList.remove("show"); // hors-ligne : la saisie manuelle marche toujours
     }
   }, 350);
 });
@@ -1245,7 +1250,13 @@ function renderSteps() {
         <button type="button" class="del-btn" onclick="removeStep('${s.id}')">🗑️</button></div>
       <label>Heure</label><input type="time" class="st-time" value="${escAttr(s.time)}">
       <label>Quoi ?</label><input class="st-title" value="${escAttr(s.title)}" placeholder="Balade en barque">
-      <label>Où ?</label><input class="st-place" value="${escAttr(s.place)}" placeholder="Parc de la Tête d'Or">
+      <label>Où ?</label>
+      <div class="place-wrap">
+        <input class="st-place" value="${escAttr(s.place)}" placeholder="Cherche une adresse…" autocomplete="off">
+        <div class="suggestions st-sugg"></div>
+      </div>
+      <a class="maplink st-map" href="${s.place ? mapsUrl(s.place) : "#"}" target="_blank" rel="noopener"
+         style="display:${s.place ? "inline-block" : "none"}">📍 Voir sur Google Maps</a>
       <div class="toggle">
         <div><b>🔒 Secrète obligatoire</b></div>
         <label class="switch"><input type="checkbox" class="st-has" ${s.secret ? "checked" : ""}><span class="slider"></span></label>
@@ -1264,6 +1275,44 @@ function renderSteps() {
       </div>
     </div>`).join("");
 }
+
+/* Autocomplétion d'adresse dans les sous-activités */
+let stepSearchTimer = null;
+$("stepsList").addEventListener("input", e => {
+  if (!e.target.classList.contains("st-place")) return;
+  const box = e.target.closest(".step-edit");
+  const sugg = box.querySelector(".st-sugg");
+  const link = box.querySelector(".st-map");
+  const q = e.target.value.trim();
+
+  if (q) { link.href = mapsUrl(q); link.style.display = "inline-block"; }
+  else { link.style.display = "none"; }
+
+  clearTimeout(stepSearchTimer);
+  if (q.length < 3) { sugg.classList.remove("show"); return; }
+  stepSearchTimer = setTimeout(async () => {
+    try {
+      const results = await searchPlaces(q);
+      if (!results.length) return sugg.classList.remove("show");
+      sugg.innerHTML = results.map((x, i) =>
+        `<div data-i="${i}"><b>${esc(x.main)}</b><small>${esc(x.rest)}</small></div>`).join("");
+      sugg._results = results;
+      sugg.classList.add("show");
+    } catch { sugg.classList.remove("show"); }
+  }, 350);
+});
+
+$("stepsList").addEventListener("click", e => {
+  const row = e.target.closest(".st-sugg div[data-i]");
+  if (!row) return;
+  const box = row.closest(".step-edit");
+  const sugg = box.querySelector(".st-sugg");
+  const value = sugg._results[+row.dataset.i].full;
+  box.querySelector(".st-place").value = value;
+  box.querySelector(".st-map").href = mapsUrl(value);
+  box.querySelector(".st-map").style.display = "inline-block";
+  sugg.classList.remove("show");
+});
 
 $("stepsList").addEventListener("change", e => {
   const box = e.target.closest(".step-edit"); if (!box) return;
@@ -1305,7 +1354,11 @@ function stepsHtml(i) {
     } else {
       const tag = s.secret ? (stepUnlocked(s) ? "🔓 " : "🔒 ") : "";
       body = `<b>${tag}${esc(s.title)}</b>` +
-        (s.place ? `<small>📍 ${esc(s.place)}</small>` : "") +
+        (s.place
+          ? `<small>📍 ${esc(s.place)}</small>
+             <a class="maplink" style="font-size:12px" href="${escAttr(mapsUrl(s.place))}"
+                target="_blank" rel="noopener" onclick="event.stopPropagation()">Google Maps ↗</a>`
+          : "") +
         (s.secret ? `<small>${esc(s.secret)}</small>` : "");
     }
     const btn = mine && s.secret && !s.revealed && !s.revealAt
