@@ -212,7 +212,10 @@
     flex: 1; background: none; border: none; padding: 10px 0 8px;
     font-size: 11px; color: #b98aa2; cursor: pointer; font-weight: 600;
   }
-  nav button .ic { display: block; font-size: 22px; margin-bottom: 2px; }
+  nav button .ic { display: block; font-size: 21px; margin-bottom: 2px; }
+  nav button { font-size: 10px; }
+  #trDays button { padding: 8px 10px; font-size: 12px; font-weight: 700; color: var(--deep); }
+  #trDays button.sel { background: var(--pink); border-color: var(--pink); color: #fff; }
   nav button.active { color: var(--deep); }
   .day-title { font-weight: 800; color: var(--deep); font-size: 14px; margin: 14px 4px 6px; text-transform: capitalize; }
   .item { display: flex; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid #ffeef4; }
@@ -427,6 +430,61 @@
     </div>
   </div>
 
+  <!-- ======== SPORT ======== -->
+  <div id="sport" class="screen">
+    <div class="seg view-seg" id="sportSeg">
+      <button type="button" class="sel" data-s="team">Équipe</button>
+      <button type="button" data-s="training">Entraînement</button>
+      <button type="button" data-s="ics">Calendrier</button>
+    </div>
+
+    <div id="sportTeam" class="card">
+      <b>🏆 Matchs de ton équipe</b>
+      <p class="muted" style="margin-top:6px">Cherche un club (foot, basket, rugby, hockey…) et importe ses prochains matchs.</p>
+      <div class="place-wrap">
+        <input id="teamQuery" placeholder="ex. Olympique Lyonnais" autocomplete="off">
+        <div class="suggestions" id="teamSuggest"></div>
+      </div>
+      <div id="teamResult"></div>
+    </div>
+
+    <div id="sportTraining" class="card" style="display:none">
+      <b>🏃 Entraînements réguliers</b>
+      <p class="muted" style="margin-top:6px">Tes créneaux hebdomadaires : ils apparaîtront comme occupés dans le planning.</p>
+      <label>Nom</label><input id="trName" placeholder="Entraînement volley">
+      <label>Jours</label>
+      <div class="seg" id="trDays">
+        <button type="button" data-d="1">Lun</button><button type="button" data-d="2">Mar</button>
+        <button type="button" data-d="3">Mer</button><button type="button" data-d="4">Jeu</button>
+        <button type="button" data-d="5">Ven</button><button type="button" data-d="6">Sam</button>
+        <button type="button" data-d="0">Dim</button>
+      </div>
+      <label>Début</label><input type="time" id="trStart" value="19:00">
+      <label>Fin</label><input type="time" id="trEnd" value="21:00">
+      <label>Lieu</label><input id="trPlace" placeholder="Gymnase municipal">
+      <label>Pendant combien de semaines ?</label>
+      <select id="trWeeks">
+        <option value="4">1 mois</option><option value="12" selected>3 mois</option>
+        <option value="26">6 mois</option><option value="52">1 an</option>
+      </select>
+      <button class="btn" onclick="addTraining()">Ajouter au planning 🏃</button>
+    </div>
+
+    <div id="sportIcs" class="card" style="display:none">
+      <b>📅 Importer un calendrier</b>
+      <p class="muted" style="margin-top:6px">Beaucoup de clubs et de ligues publient un lien « calendrier » (.ics). Colle-le ici, ou colle directement le contenu du fichier.</p>
+      <label>Lien ou contenu du calendrier</label>
+      <textarea id="icsInput" placeholder="https://…/calendrier.ics" style="min-height:90px"></textarea>
+      <button class="btn" onclick="importIcs()">Importer les matchs 📥</button>
+      <div id="icsResult" class="muted" style="margin-top:8px"></div>
+    </div>
+
+    <div class="card">
+      <b>Déjà importé</b>
+      <div id="sportList"></div>
+    </div>
+  </div>
+
   <!-- ======== RÉGLAGES ======== -->
   <div id="settings" class="screen">
     <div class="card">
@@ -451,6 +509,7 @@
   <button data-t="week" class="active"><span class="ic">🗓️</span>Semaine</button>
   <button data-t="invites"><span class="ic">💌</span>Invitations</button>
   <button data-t="create"><span class="ic">➕</span>Créer</button>
+  <button data-t="sport"><span class="ic">🏆</span>Sport</button>
   <button data-t="settings"><span class="ic">⚙️</span>Réglages</button>
 </nav>
 
@@ -762,6 +821,7 @@ window.shiftPeriod = (n) => { periodOffset += n; render(); };
 const startOfDay = d => { const x = new Date(d); x.setHours(0,0,0,0); return x; };
 const addDays = (d, n) => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
 const itemDate = it => safeDate(it.kind === "slot" ? it.start : it.date);
+const KIND_ICON = { sport: "🏆", slot: "🟢" };
 
 /* Tous les éléments triés — sans aucune limite de durée. */
 function allSorted() {
@@ -780,6 +840,16 @@ function dayCardHtml(day) {
 }
 
 function lineHtml(it) {
+  if (it.kind === "sport") {
+    const s = safeDate(it.date), e = safeDate(it.end);
+    const map = it.place
+      ? `<a class="maplink" style="font-size:12px" href="${escAttr(mapsUrl(it.place))}"
+           target="_blank" rel="noopener" onclick="event.stopPropagation()">📍 ${esc(it.place)} ↗</a>` : "";
+    return `<div class="item"><span class="emoji-big">🏆</span><div class="t">
+      <b>${esc(it.title)}</b>
+      <span>${esc(it.from)} occupé·e · ${s ? fmtTime(s) : "?"}${e ? " – " + fmtTime(e) : ""}${it.league ? " · " + esc(it.league) : ""}</span>
+      ${map}</div></div>`;
+  }
   if (it.kind === "slot") {
     const del = it.from === store.name
       ? `<button class="badge" onclick="event.stopPropagation();deleteItem('${it.id}')">✕</button>` : "";
@@ -824,7 +894,7 @@ function renderPlanning() {
       const next = addDays(day, 1);
       const list = allSorted().filter(it => itemDate(it) >= day && itemDate(it) < next);
       const dots = list.slice(0, 3).map(it =>
-        it.kind === "slot" ? "🟢" : (it.type === "trip" ? "✈️" : "💌")).join("");
+        KIND_ICON[it.kind] || (it.type === "trip" ? "✈️" : "💌")).join("");
       cells += `<div class="cal-cell${day.getMonth() !== ref.getMonth() ? " out" : ""}${
         day.getTime() === today.getTime() ? " today" : ""}" onclick="openDay('${day.toISOString()}')">
         <div class="n">${day.getDate()}</div><div class="dots">${dots}</div></div>`;
@@ -879,6 +949,7 @@ function render() {
 
 function renderInner() {
   renderPlanning();
+  renderSport();
 
   // Invitations
   const invs = items.filter(i => i.kind === "invite").sort((a,b) => b.created - a.created);
@@ -944,7 +1015,9 @@ function notifyNews() {
     knownIds.add(key);
     if (Notification?.permission === "granted") {
       let title, body;
-      if (it.kind === "slot") {
+      if (it.kind === "sport") {
+        continue; // les imports sportifs ne déclenchent pas de notification
+      } else if (it.kind === "slot") {
         title = `🟢 ${it.from} a publié une dispo`; body = "";
       } else if (isUpdate) {
         title = `✏️ ${it.from} a modifié votre date`;
@@ -1214,6 +1287,211 @@ $("placeSuggest").addEventListener("click", e => {
 document.addEventListener("click", e => {
   if (!e.target.closest(".place-wrap")) $("placeSuggest").classList.remove("show");
 });
+
+/* ================= SPORT : équipe pro / entraînements / calendrier ================= */
+
+$("sportSeg").addEventListener("click", e => {
+  const b = e.target.closest("button[data-s]"); if (!b) return;
+  document.querySelectorAll("#sportSeg button").forEach(x => x.classList.toggle("sel", x === b));
+  $("sportTeam").style.display = b.dataset.s === "team" ? "block" : "none";
+  $("sportTraining").style.display = b.dataset.s === "training" ? "block" : "none";
+  $("sportIcs").style.display = b.dataset.s === "ics" ? "block" : "none";
+});
+
+/* --- 1. Recherche d'une équipe (TheSportsDB, gratuit) --- */
+const SPORTS_API = "https://www.thesportsdb.com/api/v1/json/3/";
+let teamTimer = null;
+
+$("teamQuery").addEventListener("input", () => {
+  clearTimeout(teamTimer);
+  const q = $("teamQuery").value.trim();
+  const box = $("teamSuggest");
+  if (q.length < 3) { box.classList.remove("show"); return; }
+  teamTimer = setTimeout(async () => {
+    try {
+      const r = await fetch(SPORTS_API + "searchteams.php?t=" + encodeURIComponent(q));
+      const j = await r.json();
+      const teams = (j.teams || []).slice(0, 6);
+      if (!teams.length) { box.classList.remove("show"); return; }
+      box.innerHTML = teams.map((t, i) =>
+        `<div data-i="${i}"><b>${esc(t.strTeam)}</b><small>${esc(t.strSport)} — ${esc(t.strLeague || "")}</small></div>`).join("");
+      box._teams = teams;
+      box.classList.add("show");
+    } catch { box.classList.remove("show"); }
+  }, 400);
+});
+
+$("teamSuggest").addEventListener("click", async e => {
+  const row = e.target.closest("div[data-i]"); if (!row) return;
+  const t = $("teamSuggest")._teams[+row.dataset.i];
+  $("teamSuggest").classList.remove("show");
+  $("teamQuery").value = t.strTeam;
+  $("teamResult").innerHTML = `<div class="muted" style="margin-top:10px">Recherche des matchs de ${esc(t.strTeam)}…</div>`;
+  try {
+    const r = await fetch(SPORTS_API + "eventsnext.php?id=" + t.idTeam);
+    const j = await r.json();
+    const events = j.events || [];
+    if (!events.length) {
+      $("teamResult").innerHTML = `<div class="muted" style="margin-top:10px">Aucun match à venir trouvé pour cette équipe.
+        Essaie l'onglet « Calendrier » avec le lien .ics du club 🙂</div>`;
+      return;
+    }
+    $("teamResult")._events = events;
+    $("teamResult")._team = t.strTeam;
+    $("teamResult").innerHTML = events.map((ev, i) =>
+      `<div class="item"><span class="emoji-big">🏆</span><div class="t">
+        <b>${esc(ev.strEvent)}</b>
+        <span>${esc(ev.dateEvent)} ${esc((ev.strTime || "").slice(0,5))}${ev.strVenue ? " — " + esc(ev.strVenue) : ""}</span>
+      </div></div>`).join("") +
+      `<button class="btn" onclick="importTeamMatches()">Ajouter ces ${events.length} match(s) 🏆</button>`;
+  } catch (err) {
+    $("teamResult").innerHTML = `<div class="muted">Impossible de récupérer les matchs (${esc(err.message)}).</div>`;
+  }
+});
+
+window.importTeamMatches = async () => {
+  const events = $("teamResult")._events || [];
+  const team = $("teamResult")._team || "Mon équipe";
+  let n = 0;
+  for (const ev of events) {
+    const start = ev.dateEvent + "T" + ((ev.strTime || "20:00:00").slice(0,5));
+    if (!safeDate(start)) continue;
+    const end = new Date(new Date(start).getTime() + 2 * 3600e3);
+    await put("sport-" + (ev.idEvent || Date.now() + n), {
+      kind: "sport", from: store.name, team,
+      title: ev.strEvent || team, date: start, end: localInput(end),
+      place: ev.strVenue || "", league: ev.strLeague || "", created: Date.now()
+    });
+    n++;
+  }
+  $("teamResult").innerHTML = `<div class="muted" style="margin-top:10px">✅ ${n} match(s) ajouté(s) au planning.</div>`;
+};
+
+/* --- 2. Entraînements récurrents --- */
+$("trDays").addEventListener("click", e => {
+  const b = e.target.closest("button[data-d]"); if (!b) return;
+  b.classList.toggle("sel");
+});
+
+/* format "YYYY-MM-DDTHH:MM" en heure locale */
+function localInput(d) {
+  const p = n => String(n).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth()+1) + "-" + p(d.getDate()) +
+    "T" + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+
+window.addTraining = async () => {
+  const name = $("trName").value.trim() || "Entraînement";
+  const days = [...document.querySelectorAll("#trDays button.sel")].map(b => +b.dataset.d);
+  if (!days.length) return alert("Choisis au moins un jour 🗓️");
+  const [h1, m1] = $("trStart").value.split(":").map(Number);
+  const [h2, m2] = $("trEnd").value.split(":").map(Number);
+  const weeks = +$("trWeeks").value;
+  const place = $("trPlace").value.trim();
+  const group = "tr" + Date.now();
+  let n = 0;
+  const cursor = new Date(); cursor.setHours(0,0,0,0);
+  for (let d = 0; d < weeks * 7; d++) {
+    const day = new Date(cursor); day.setDate(day.getDate() + d);
+    if (!days.includes(day.getDay())) continue;
+    const s = new Date(day); s.setHours(h1 || 0, m1 || 0, 0, 0);
+    const e = new Date(day); e.setHours(h2 || 0, m2 || 0, 0, 0);
+    await put("sport-" + group + "-" + n, {
+      kind: "sport", from: store.name, team: name, group,
+      title: name, date: localInput(s), end: localInput(e),
+      place, league: "", created: Date.now()
+    });
+    n++;
+  }
+  alert(`✅ ${n} séance(s) ajoutée(s) 🏃`);
+  $("trName").value = "";
+};
+
+/* --- 3. Import d'un calendrier iCalendar --- */
+function parseIcs(text) {
+  const events = [];
+  // Les lignes pliées (RFC 5545) commencent par un espace : on les recolle.
+  const lines = text.replace(/\r\n[ \t]/g, "").replace(/\n[ \t]/g, "").split(/\r?\n/);
+  let cur = null;
+  const toLocal = v => {
+    if (!v) return null;
+    const m = v.match(/(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})(Z)?)?/);
+    if (!m) return null;
+    const [, y, mo, d, h = "00", mi = "00", s = "00", z] = m;
+    const date = z
+      ? new Date(Date.UTC(+y, +mo - 1, +d, +h, +mi, +s))   // UTC → heure locale
+      : new Date(+y, +mo - 1, +d, +h, +mi, +s);
+    return isNaN(date) ? null : localInput(date);
+  };
+  for (const line of lines) {
+    if (line.startsWith("BEGIN:VEVENT")) cur = {};
+    else if (line.startsWith("END:VEVENT")) { if (cur?.date) events.push(cur); cur = null; }
+    else if (cur) {
+      const i = line.indexOf(":");
+      if (i < 0) continue;
+      const key = line.slice(0, i).split(";")[0].toUpperCase();
+      const val = line.slice(i + 1).replace(/\\,/g, ",").replace(/\\n/gi, " ").trim();
+      if (key === "DTSTART") cur.date = toLocal(val);
+      else if (key === "DTEND") cur.end = toLocal(val);
+      else if (key === "SUMMARY") cur.title = val;
+      else if (key === "LOCATION") cur.place = val;
+    }
+  }
+  return events;
+}
+
+window.importIcs = async () => {
+  const raw = $("icsInput").value.trim();
+  const out = $("icsResult");
+  if (!raw) return alert("Colle un lien ou le contenu du calendrier 📅");
+  let text = raw;
+  if (/^https?:\/\//i.test(raw)) {
+    out.textContent = "Téléchargement du calendrier…";
+    try {
+      const r = await fetch(raw);
+      text = await r.text();
+    } catch {
+      out.innerHTML = "⚠️ Ce site refuse le téléchargement direct depuis l'app (sécurité du navigateur).<br>" +
+        "Ouvre le lien dans Safari, copie tout le texte du fichier, et colle-le ici à la place du lien.";
+      return;
+    }
+  }
+  const events = parseIcs(text).filter(e => safeDate(e.date));
+  if (!events.length) { out.textContent = "⚠️ Aucun événement trouvé dans ce calendrier."; return; }
+  const future = events.filter(e => new Date(e.date) >= new Date(Date.now() - 7 * 864e5));
+  let n = 0;
+  for (const ev of future) {
+    await put("sport-ics-" + Date.now() + "-" + n, {
+      kind: "sport", from: store.name, team: "Calendrier importé",
+      title: ev.title || "Match", date: ev.date,
+      end: ev.end || "", place: ev.place || "", league: "", created: Date.now()
+    });
+    n++;
+  }
+  out.textContent = `✅ ${n} événement(s) importé(s) (sur ${events.length} trouvés).`;
+  $("icsInput").value = "";
+};
+
+/* --- Liste et suppression --- */
+function renderSport() {
+  const list = items.filter(i => i.kind === "sport")
+    .sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+  const groups = {};
+  for (const s of list) groups[s.team || "Sport"] = (groups[s.team || "Sport"] || 0) + 1;
+  const keys = Object.keys(groups);
+  $("sportList").innerHTML = keys.length
+    ? keys.map(k => `<div class="item"><span class="emoji-big">🏆</span>
+        <div class="t"><b>${esc(k)}</b><span>${groups[k]} événement(s)</span></div>
+        <button class="badge" onclick="deleteTeam('${escAttr(k)}')">✕</button></div>`).join("")
+    : `<div class="muted">Rien pour l'instant.</div>`;
+}
+
+window.deleteTeam = async (team) => {
+  if (!confirm(`Retirer tous les événements de « ${team} » ?`)) return;
+  for (const s of items.filter(i => i.kind === "sport" && (i.team || "Sport") === team)) {
+    await deleteDoc(doc(db, "couples", store.code, "items", s.id));
+  }
+};
 
 /* ---------- Sous-activités ---------- */
 let steps = [];
