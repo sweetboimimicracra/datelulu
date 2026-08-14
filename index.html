@@ -440,7 +440,7 @@
 
     <div id="sportTeam" class="card">
       <b>🏆 Matchs de ton équipe</b>
-      <p class="muted" style="margin-top:6px">Cherche un club (foot, basket, rugby, hockey…) et importe ses prochains matchs.</p>
+      <p class="muted" style="margin-top:6px">Cherche un club (foot, basket, rugby, hockey…) et importe ses prochains matchs. Astuce : le nom court marche mieux — « Lyon », « Marseille », « Arsenal ».</p>
       <div class="place-wrap">
         <input id="teamQuery" placeholder="ex. Olympique Lyonnais" autocomplete="off">
         <div class="suggestions" id="teamSuggest"></div>
@@ -1309,10 +1309,26 @@ $("teamQuery").addEventListener("input", () => {
   if (q.length < 3) { box.classList.remove("show"); return; }
   teamTimer = setTimeout(async () => {
     try {
-      const r = await fetch(SPORTS_API + "searchteams.php?t=" + encodeURIComponent(q));
-      const j = await r.json();
-      const teams = (j.teams || []).slice(0, 6);
-      if (!teams.length) { box.classList.remove("show"); return; }
+      const ask = async term => {
+        const r = await fetch(SPORTS_API + "searchteams.php?t=" + encodeURIComponent(term));
+        return (await r.json()).teams || [];
+      };
+      // La base n'accepte souvent que le nom court ("Lyon" plutôt que
+      // "Olympique Lyonnais") : on réessaie mot par mot.
+      let found = await ask(q);
+      if (!found.length) {
+        for (const w of q.split(/[\s-]+/).filter(w => w.length > 3)) {
+          found = await ask(w);
+          if (found.length) break;
+        }
+      }
+      const teams = found.slice(0, 6);
+      if (!teams.length) {
+        box.innerHTML = `<div><b>Aucune équipe trouvée</b><small>Essaie un nom plus court : « Lyon », « Marseille », « Arsenal »…</small></div>`;
+        box._teams = [];
+        box.classList.add("show");
+        return;
+      }
       box.innerHTML = teams.map((t, i) =>
         `<div data-i="${i}"><b>${esc(t.strTeam)}</b><small>${esc(t.strSport)} — ${esc(t.strLeague || "")}</small></div>`).join("");
       box._teams = teams;
@@ -1323,7 +1339,8 @@ $("teamQuery").addEventListener("input", () => {
 
 $("teamSuggest").addEventListener("click", async e => {
   const row = e.target.closest("div[data-i]"); if (!row) return;
-  const t = $("teamSuggest")._teams[+row.dataset.i];
+  const t = ($("teamSuggest")._teams || [])[+row.dataset.i];
+  if (!t) return;
   $("teamSuggest").classList.remove("show");
   $("teamQuery").value = t.strTeam;
   $("teamResult").innerHTML = `<div class="muted" style="margin-top:10px">Recherche des matchs de ${esc(t.strTeam)}…</div>`;
