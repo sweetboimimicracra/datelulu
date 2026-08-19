@@ -289,6 +289,19 @@
   .wx small { display: block; font-size: 10px; font-weight: 800; color: #c98bab; letter-spacing: .5px; }
   .wx b { font-size: 15px; }
   .wx .sub { font-size: 12px; color: #96718a; }
+  .wx-list { margin: 10px 0; background: var(--blush); border: 1px solid var(--rose);
+             border-radius: 14px; padding: 10px 12px; }
+  .wx-list > small { display: block; font-size: 10px; font-weight: 800; color: #c98bab;
+                     letter-spacing: .5px; margin-bottom: 6px; }
+  .wx-list .sub { font-size: 12px; color: #96718a; margin-top: 6px; }
+  .wx-day { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 13px; }
+  .wx-day + .wx-day { border-top: 1px solid rgba(255,214,227,.7); }
+  .wx-day .dico { font-size: 18px; line-height: 1; }
+  .wx-day .dname { flex: 1; text-transform: capitalize; }
+  .wx-day .dcond { display: block; font-size: 11px; color: #96718a; text-transform: none;
+                   font-weight: 400; letter-spacing: 0; }
+  .wx-day .dtemp { font-weight: 700; white-space: nowrap; }
+  .wx-day .drain { font-weight: 400; color: #96718a; font-size: 11px; }
   .confetti { position: absolute; top: -60px; font-size: 26px; animation: fall linear infinite; pointer-events: none; }
   @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
 </style>
@@ -1160,9 +1173,10 @@ function showDetailsInner(i) {
     d("💌","DE LA PART DE", i.from) + updated;
   $("ovDetails").insertAdjacentHTML("beforeend", stepsHtml(i) + vaultHtml(i));
 
-  /* Météo : uniquement si le lieu est déjà dévoilé pour cette personne.
-     Sinon aucune requête n'est faite — la surprise reste entière. */
-  if (i.place && placeVisible(i, mine)) {
+  /* Météo : toujours affichée, même quand le lieu est sous scellés.
+     Seul le NOM du lieu reste caché ; les conditions, elles, sont utiles
+     pour savoir comment s'habiller et faire sa valise. */
+  if (i.place) {
     const wx = document.createElement("div");
     wx.className = "wx";
     wx.innerHTML = `<div class="ico">⏳</div><div><small>MÉTÉO SUR PLACE</small>
@@ -1257,11 +1271,10 @@ function confetti() {
 }
 
 /* ================= MÉTÉO (Open-Meteo, gratuit, sans clé) =================
-   RÈGLE DE DISCRÉTION : la météo n'est demandée et affichée QUE si le lieu
-   est déjà visible pour la personne qui regarde (placeVisible). Tant qu'une
-   activité secrète scelle le lieu, aucune requête n'est envoyée — sinon la
-   destination fuiterait par le simple appel réseau (ou par la température).
-   La météo n'est jamais exportée dans le .ics ni dans le partage. */
+   La météo s'affiche toujours, y compris quand le lieu est sous scellés :
+   seul le NOM de la destination reste caché. Pour un voyage, la prévision
+   est donnée jour par jour, du départ au retour, pour préparer la valise.
+   La météo n'est jamais exportée dans le .ics ni dans le message de partage. */
 
 const WX_CODES = {
   0: ["Ciel dégagé", "☀️"], 1: ["Plutôt dégagé", "🌤️"], 2: ["Partiellement nuageux", "⛅"],
@@ -1322,6 +1335,45 @@ async function fetchWeather(lat, lon, day, hour) {
   return out;
 }
 
+/* Prévisions jour par jour sur une plage de dates (voyages). */
+async function fetchWeatherRange(lat, lon, from, to) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)},${from}..${to}`;
+  if (wxCache.has(key)) return wxCache.get(key);
+  const url = "https://api.open-meteo.com/v1/forecast"
+    + `?latitude=${lat}&longitude=${lon}`
+    + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+    + `&timezone=auto&start_date=${from}&end_date=${to}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("météo indisponible");
+  const d = await r.json();
+  const out = (d.daily?.time || []).map((t, k) => ({
+    day: t,
+    code: d.daily.weather_code[k],
+    max: Math.round(d.daily.temperature_2m_max[k]),
+    min: Math.round(d.daily.temperature_2m_min[k]),
+    rain: d.daily.precipitation_probability_max?.[k]
+  }));
+  if (!out.length) throw new Error("pas de prévision");
+  wxCache.set(key, out);
+  return out;
+}
+
+/* Conseil valise à partir de l'ensemble des jours du voyage. */
+function wxTripTip(days) {
+  const codes = days.map(d => d.code);
+  const maxT = Math.max(...days.map(d => d.max));
+  const minT = Math.min(...days.map(d => d.min));
+  const wet = days.filter(d => (d.rain ?? 0) >= 40 ||
+    [61,63,65,80,81,82,95,96,99].includes(d.code)).length;
+  const bits = [];
+  if (codes.some(c => [95,96,99].includes(c))) bits.push("orages possibles");
+  if (wet) bits.push(wet === 1 ? "1 jour humide" : `${wet} jours humides`);
+  if (maxT >= 27) bits.push("chaud l'après-midi");
+  if (minT <= 4) bits.push("froid le matin");
+  if (maxT - minT >= 12) bits.push("gros écart jour/nuit — prévoir des couches");
+  return bits.length ? bits.join(", ") + " 🧳" : "Temps clément sur tout le séjour 💕";
+}
+
 /* Petit conseil complice selon le temps prévu. */
 function wxTip(w) {
   if ([95, 96, 99].includes(w.code)) return "Orage annoncé — prévoyez un plan B au chaud ⛈️";
@@ -1333,33 +1385,69 @@ function wxTip(w) {
   return "Temps idéal pour sortir 💕";
 }
 
-/* Remplit le bloc météo d'une invitation (appelé seulement si le lieu est visible). */
+/* Bornes de la fenêtre de prévision : hier → J+15. */
+const wxDayISO = d => localInput(d).slice(0, 10);
+const wxAddDays = (d, n) => new Date(d.getTime() + n * 86400000);
+const wxDayLabel = day => new Date(day + "T12:00").toLocaleDateString("fr-FR",
+  { weekday: "short", day: "numeric", month: "short" });
+
+/* Remplit le bloc météo d'une invitation.
+   Affiché même si le lieu est scellé : seul son nom reste caché. */
 async function loadWeather(i, el) {
   try {
-    const d = safeDate(i.date);
-    if (!d) return el.remove();
-    const day = localInput(d).slice(0, 10);        // AAAA-MM-JJ en heure locale
-    const days = Math.floor((d - new Date()) / 86400000);
-    if (days < -1 || days > 15) {                  // hors portée des prévisions
+    const start = safeDate(i.date);
+    if (!start) return el.remove();
+    const trip = i.type === "trip";
+    const ret = trip ? safeDate(i.returnDate) : null;
+    const end = (ret && ret >= start) ? ret : start;
+
+    const now = new Date();
+    const first = wxAddDays(now, -1), last = wxAddDays(now, 15);
+    if (end < first || start > last) {                 // hors portée des prévisions
       el.innerHTML = `<div class="ico">🔭</div><div><small>MÉTÉO</small>
         <b>Trop tôt pour le savoir</b>
-        <div class="sub">La prévision arrive ~15 jours avant le jour J.</div></div>`;
+        <div class="sub">La prévision arrive ~15 jours avant le départ.</div></div>`;
       return;
     }
+
     let lat = i.lat, lon = i.lon;
     if (typeof lat !== "number" || typeof lon !== "number") {
       const g = await geocodePlace(i.place);
       if (!g) return el.remove();
       lat = g.lat; lon = g.lon;
     }
-    const w = await fetchWeather(lat, lon, day, d.getHours());
-    const [label, icon] = WX_CODES[w.code] || ["Météo", "🌡️"];
-    const temp = w.now != null
-      ? `${w.now}°C à ${String(w.hour).padStart(2, "0")}h`
-      : `${w.max}°C / ${w.min}°C`;
-    el.innerHTML = `<div class="ico">${icon}</div><div><small>MÉTÉO SUR PLACE</small>
-      <b>${esc(label)} · ${esc(temp)}</b>
-      <div class="sub">${esc(wxTip(w))}</div></div>`;
+
+    const from = wxDayISO(start < now ? now : start);
+    const to = wxDayISO(end > last ? last : end);
+    const tronque = end > last;
+
+    // Sortie simple : la prévision tient sur une seule journée.
+    if (!trip || from === to) {
+      const w = await fetchWeather(lat, lon, from, start.getHours());
+      const [label, icon] = WX_CODES[w.code] || ["Météo", "🌡️"];
+      const temp = w.now != null
+        ? `${w.now}°C à ${String(w.hour).padStart(2, "0")}h`
+        : `${w.max}°C / ${w.min}°C`;
+      el.innerHTML = `<div class="ico">${icon}</div><div><small>MÉTÉO SUR PLACE</small>
+        <b>${esc(label)} · ${esc(temp)}</b>
+        <div class="sub">${esc(wxTip(w))}</div></div>`;
+      return;
+    }
+
+    // Voyage : une ligne par journée, du départ au retour.
+    const days = await fetchWeatherRange(lat, lon, from, to);
+    el.className = "wx-list";
+    el.innerHTML =
+      `<small>MÉTÉO JOUR PAR JOUR</small>` +
+      days.map(d => {
+        const [label, icon] = WX_CODES[d.code] || ["Météo", "🌡️"];
+        const rain = (d.rain ?? 0) >= 30 ? ` <span class="drain">💧${d.rain}%</span>` : "";
+        return `<div class="wx-day"><span class="dico">${icon}</span>
+          <span class="dname">${esc(wxDayLabel(d.day))}<small class="dcond">${esc(label)}</small></span>
+          <span class="dtemp">${d.max}° / ${d.min}°${rain}</span></div>`;
+      }).join("") +
+      `<div class="sub">${esc(wxTripTip(days))}</div>` +
+      (tronque ? `<div class="sub">Les derniers jours du séjour s'afficheront à mesure qu'ils entrent dans la fenêtre de prévision.</div>` : "");
   } catch {
     el.remove();   // hors-ligne ou API muette : on n'encombre pas la fiche
   }
