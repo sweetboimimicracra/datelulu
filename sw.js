@@ -1,6 +1,6 @@
 // Service worker DateLulu : cache la coquille de l'app pour un lancement
 // instantané et un fonctionnement hors-ligne (les données restent sur Firestore).
-const CACHE = "datelulu-v13";
+const CACHE = "datelulu-v14";
 const ASSETS = ["./index.html", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => {

@@ -282,6 +282,13 @@
   .detail-card { background: #fff; border-radius: 22px; padding: 20px; text-align: left; box-shadow: 0 10px 30px rgba(242,114,160,.3); max-width: 340px; width: 100%; }
   .detail-card .d { display: flex; gap: 10px; margin: 10px 0; }
   .detail-card .d small { display: block; font-size: 10px; font-weight: 800; color: #c98bab; letter-spacing: .5px; }
+  .wx { display: flex; align-items: center; gap: 10px; margin: 10px 0;
+        background: var(--blush); border: 1px solid var(--rose);
+        border-radius: 14px; padding: 10px 12px; }
+  .wx .ico { font-size: 26px; line-height: 1; }
+  .wx small { display: block; font-size: 10px; font-weight: 800; color: #c98bab; letter-spacing: .5px; }
+  .wx b { font-size: 15px; }
+  .wx .sub { font-size: 12px; color: #96718a; }
   .confetti { position: absolute; top: -60px; font-size: 26px; animation: fall linear infinite; pointer-events: none; }
   @keyframes fall { to { transform: translateY(110vh) rotate(360deg); } }
 </style>
@@ -711,7 +718,10 @@ window.sendInvite = async () => {
     transport: invType === "trip" ? $("invTransport").value : "",
     hideTransport: invType === "trip" && $("invHideTransport").checked,
     packing: invType === "trip" ? $("invPacking").value.trim() : "",
-    place: $("invPlace").value.trim(), dress: $("invDress").value.trim(),
+    place: $("invPlace").value.trim(),
+    lat: pickedCoords ? pickedCoords.lat : null,
+    lon: pickedCoords ? pickedCoords.lon : null,
+    dress: $("invDress").value.trim(),
     note: $("invNote").value.trim(), emoji: chosenEmoji,
     unrefusable: $("invUnref").checked,
     secret,
@@ -781,6 +791,8 @@ window.editCurrent = () => {
   $("invDate").value = i.date || "";
   $("invDuration").value = String(i.duration || 120);
   $("invPlace").value = i.place || "";
+  pickedCoords = (typeof i.lat === "number" && typeof i.lon === "number")
+    ? { lat: i.lat, lon: i.lon } : null;
   $("invDress").value = i.dress || "";
   $("invNote").value = i.note || "";
   $("invUnref").checked = !!i.unrefusable;
@@ -1148,6 +1160,17 @@ function showDetailsInner(i) {
     d("💌","DE LA PART DE", i.from) + updated;
   $("ovDetails").insertAdjacentHTML("beforeend", stepsHtml(i) + vaultHtml(i));
 
+  /* Météo : uniquement si le lieu est déjà dévoilé pour cette personne.
+     Sinon aucune requête n'est faite — la surprise reste entière. */
+  if (i.place && placeVisible(i, mine)) {
+    const wx = document.createElement("div");
+    wx.className = "wx";
+    wx.innerHTML = `<div class="ico">⏳</div><div><small>MÉTÉO SUR PLACE</small>
+      <b>Consultation…</b></div>`;
+    $("ovDetails").appendChild(wx);
+    loadWeather(i, wx);
+  }
+
   // Seul l'auteur peut modifier son invitation.
   $("editInviteBtn").style.display = i.from === store.name ? "block" : "none";
 }
@@ -1233,6 +1256,115 @@ function confetti() {
   }
 }
 
+/* ================= MÉTÉO (Open-Meteo, gratuit, sans clé) =================
+   RÈGLE DE DISCRÉTION : la météo n'est demandée et affichée QUE si le lieu
+   est déjà visible pour la personne qui regarde (placeVisible). Tant qu'une
+   activité secrète scelle le lieu, aucune requête n'est envoyée — sinon la
+   destination fuiterait par le simple appel réseau (ou par la température).
+   La météo n'est jamais exportée dans le .ics ni dans le partage. */
+
+const WX_CODES = {
+  0: ["Ciel dégagé", "☀️"], 1: ["Plutôt dégagé", "🌤️"], 2: ["Partiellement nuageux", "⛅"],
+  3: ["Couvert", "☁️"], 45: ["Brouillard", "🌫️"], 48: ["Brouillard givrant", "🌫️"],
+  51: ["Bruine légère", "🌦️"], 53: ["Bruine", "🌦️"], 55: ["Bruine dense", "🌦️"],
+  56: ["Bruine verglaçante", "🌧️"], 57: ["Bruine verglaçante", "🌧️"],
+  61: ["Pluie faible", "🌦️"], 63: ["Pluie", "🌧️"], 65: ["Forte pluie", "🌧️"],
+  66: ["Pluie verglaçante", "🌧️"], 67: ["Pluie verglaçante", "🌧️"],
+  71: ["Neige faible", "🌨️"], 73: ["Neige", "🌨️"], 75: ["Forte neige", "❄️"],
+  77: ["Grains de neige", "🌨️"], 80: ["Averses", "🌦️"], 81: ["Averses", "🌧️"],
+  82: ["Violentes averses", "⛈️"], 85: ["Averses de neige", "🌨️"], 86: ["Averses de neige", "🌨️"],
+  95: ["Orage", "⛈️"], 96: ["Orage et grêle", "⛈️"], 99: ["Orage et grêle", "⛈️"]
+};
+const wxCache = new Map();   // clé "lat,lon,jour" → résultat, pour ne pas spammer l'API
+const geoCache = new Map();  // clé lieu → {lat, lon}
+
+/* Retrouve les coordonnées d'un lieu saisi à la main (aucune géoloc du téléphone). */
+async function geocodePlace(place) {
+  const key = place.toLowerCase();
+  if (geoCache.has(key)) return geoCache.get(key);
+  const r = await fetch(`https://photon.komoot.io/api/?q=${encodeURIComponent(place)}&limit=1&lang=fr`);
+  const d = await r.json();
+  const c = d.features?.[0]?.geometry?.coordinates;
+  const out = (c && c.length === 2) ? { lat: c[1], lon: c[0] } : null;
+  geoCache.set(key, out);
+  return out;
+}
+
+/* Prévision pour un jour donné, à l'heure du rendez-vous si elle est connue. */
+async function fetchWeather(lat, lon, day, hour) {
+  const key = `${lat.toFixed(3)},${lon.toFixed(3)},${day}`;
+  if (wxCache.has(key)) return wxCache.get(key);
+  const url = "https://api.open-meteo.com/v1/forecast"
+    + `?latitude=${lat}&longitude=${lon}`
+    + "&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max"
+    + "&hourly=temperature_2m,weather_code,precipitation_probability"
+    + `&timezone=auto&start_date=${day}&end_date=${day}`;
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("météo indisponible");
+  const d = await r.json();
+  if (!d.daily?.time?.length) throw new Error("pas de prévision");
+  const out = {
+    code: d.daily.weather_code[0],
+    max: Math.round(d.daily.temperature_2m_max[0]),
+    min: Math.round(d.daily.temperature_2m_min[0]),
+    rain: d.daily.precipitation_probability_max?.[0]
+  };
+  if (hour != null && d.hourly?.time) {
+    const idx = d.hourly.time.findIndex(t => t.startsWith(`${day}T${String(hour).padStart(2, "0")}`));
+    if (idx >= 0) {
+      out.now = Math.round(d.hourly.temperature_2m[idx]);
+      out.code = d.hourly.weather_code[idx];
+      out.rain = d.hourly.precipitation_probability?.[idx] ?? out.rain;
+      out.hour = hour;
+    }
+  }
+  wxCache.set(key, out);
+  return out;
+}
+
+/* Petit conseil complice selon le temps prévu. */
+function wxTip(w) {
+  if ([95, 96, 99].includes(w.code)) return "Orage annoncé — prévoyez un plan B au chaud ⛈️";
+  if ([61, 63, 65, 80, 81, 82, 51, 53, 55].includes(w.code)) return "Pensez au parapluie ☂️";
+  if ([71, 73, 75, 77, 85, 86].includes(w.code)) return "Neige prévue — bonnet obligatoire 🧣";
+  if ((w.now ?? w.max) >= 27) return "Il va faire chaud — de l'eau et de l'ombre 🥤";
+  if ((w.now ?? w.min) <= 4) return "Ça pique — manteau et gants 🧤";
+  if (w.rain >= 50) return `${w.rain}% de risque de pluie — un parapluie ne mange pas de pain ☂️`;
+  return "Temps idéal pour sortir 💕";
+}
+
+/* Remplit le bloc météo d'une invitation (appelé seulement si le lieu est visible). */
+async function loadWeather(i, el) {
+  try {
+    const d = safeDate(i.date);
+    if (!d) return el.remove();
+    const day = localInput(d).slice(0, 10);        // AAAA-MM-JJ en heure locale
+    const days = Math.floor((d - new Date()) / 86400000);
+    if (days < -1 || days > 15) {                  // hors portée des prévisions
+      el.innerHTML = `<div class="ico">🔭</div><div><small>MÉTÉO</small>
+        <b>Trop tôt pour le savoir</b>
+        <div class="sub">La prévision arrive ~15 jours avant le jour J.</div></div>`;
+      return;
+    }
+    let lat = i.lat, lon = i.lon;
+    if (typeof lat !== "number" || typeof lon !== "number") {
+      const g = await geocodePlace(i.place);
+      if (!g) return el.remove();
+      lat = g.lat; lon = g.lon;
+    }
+    const w = await fetchWeather(lat, lon, day, d.getHours());
+    const [label, icon] = WX_CODES[w.code] || ["Météo", "🌡️"];
+    const temp = w.now != null
+      ? `${w.now}°C à ${String(w.hour).padStart(2, "0")}h`
+      : `${w.max}°C / ${w.min}°C`;
+    el.innerHTML = `<div class="ico">${icon}</div><div><small>MÉTÉO SUR PLACE</small>
+      <b>${esc(label)} · ${esc(temp)}</b>
+      <div class="sub">${esc(wxTip(w))}</div></div>`;
+  } catch {
+    el.remove();   // hors-ligne ou API muette : on n'encombre pas la fiche
+  }
+}
+
 /* ---------- Recherche de lieu (Photon / OpenStreetMap, gratuit) ---------- */
 function updateMapLink() {
   const v = $("invPlace").value.trim();
@@ -1250,12 +1382,18 @@ async function searchPlaces(q) {
     const main = p.name || p.street || "";
     const rest = [p.housenumber, p.street, p.postcode, p.city, p.country]
       .filter(Boolean).filter(x => x !== main).join(", ");
-    return { main, rest, full: [main, rest].filter(Boolean).join(", ") };
+    const c = f.geometry?.coordinates || [];
+    return { main, rest, full: [main, rest].filter(Boolean).join(", "),
+             lat: c[1], lon: c[0] };
   }).filter(x => x.main);
 }
 
 let searchTimer = null;
+/* Coordonnées du lieu choisi dans les suggestions (sert à la météo).
+   Une saisie manuelle les efface : on re-géocodera à l'affichage. */
+let pickedCoords = null;
 $("invPlace").addEventListener("input", () => {
+  pickedCoords = null;
   updateMapLink();
   clearTimeout(searchTimer);
   const q = $("invPlace").value.trim();
@@ -1279,7 +1417,10 @@ $("placeSuggest").addEventListener("click", e => {
   const row = e.target.closest("div[data-i]");
   if (!row) return;
   const box = $("placeSuggest");
-  $("invPlace").value = box._results[+row.dataset.i].full;
+  const pick = box._results[+row.dataset.i];
+  $("invPlace").value = pick.full;
+  pickedCoords = (typeof pick.lat === "number" && typeof pick.lon === "number")
+    ? { lat: pick.lat, lon: pick.lon } : null;
   box.classList.remove("show");
   updateMapLink();
 });
